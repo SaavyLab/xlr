@@ -93,7 +93,8 @@ dante/<device>/rx/<channel>      dante/AVIOUSBC-0563aa/rx/Left
 dante/<device>/tx/<channel>      dante/saavys-Mac-mini/tx/Scarlett 18i20:Channel 9
 focusrite/<device>/input/<n>     focusrite/scarlett/input/1
 focusrite/<device>/monitor       focusrite/scarlett/monitor
-pipewire/<node>                  pipewire/alsa_input.usb-Audinate…
+pipewire/sink/<node>             pipewire/sink/alsa_output.usb-Audinate…
+pipewire/source/<node>           pipewire/source/alsa_input.usb-Audinate…
 ```
 
 A host's configuration maps names to addresses. Names are what `xlr status`
