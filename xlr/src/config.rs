@@ -1,6 +1,11 @@
 //! This host's configuration: `$XLR_CONFIG`, or `~/.config/xlr/xlr.toml`.
 //!
 //! ```toml
+//! # Dante devices attached to this host, such as a USB Dante adapter.
+//! # (Dante Via running on this host is recognised automatically.)
+//! [host]
+//! owns = ["dante/avio"]
+//!
 //! # Short names for devices, used in addresses.
 //! [devices]
 //! scarlett = "focusrite/P9H9Q9D240E9AA"
@@ -21,7 +26,18 @@ use std::{
 
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct HostSection {
+    /// Dante devices attached to this host (for example a USB Dante adapter),
+    /// as `dante/<device or alias>`.
+    #[serde(default)]
+    owns: Vec<String>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct File {
+    #[serde(default)]
+    host: HostSection,
     #[serde(default)]
     devices: BTreeMap<String, String>,
     #[serde(default)]
@@ -36,6 +52,8 @@ pub struct Config {
     devices: HashMap<(String, String), String>,
     /// Name → address, in name order.
     pub names: BTreeMap<String, Address>,
+    /// Dante device names this host owns, from `[host] owns`.
+    pub owned_dante: Vec<String>,
 }
 
 impl Config {
@@ -74,7 +92,20 @@ impl Config {
             path: None,
             devices,
             names: BTreeMap::new(),
+            owned_dante: Vec::new(),
         };
+        for owned in &file.host.owns {
+            let device = owned
+                .strip_prefix("dante/")
+                .filter(|device| !device.is_empty() && !device.contains('/'))
+                .ok_or_else(|| format!("[host] owns entry `{owned}` must be `dante/<device>`"))?;
+            let device = config
+                .devices
+                .get(&("dante".to_owned(), device.to_owned()))
+                .cloned()
+                .unwrap_or_else(|| device.to_owned());
+            config.owned_dante.push(device);
+        }
         for (name, text) in &file.names {
             if name.contains('/') || name.contains('@') {
                 return Err(format!("name `{name}` must not contain `/` or `@`"));
@@ -163,6 +194,16 @@ mod tests {
         ] {
             assert!(Config::parse(text).is_err(), "{text}");
         }
+    }
+
+    #[test]
+    fn owned_devices_resolve_aliases() {
+        let config = Config::parse(
+            "[host]\nowns = [\"dante/avio\", \"dante/Other-1\"]\n[devices]\navio = \"dante/AVIO-1\"",
+        )
+        .unwrap();
+        assert_eq!(config.owned_dante, ["AVIO-1", "Other-1"]);
+        assert!(Config::parse("[host]\nowns = [\"focusrite/x\"]").is_err());
     }
 
     #[test]

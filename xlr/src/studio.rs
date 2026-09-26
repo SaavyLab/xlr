@@ -64,10 +64,16 @@ pub fn read(local: impl FnOnce() -> Setup + Send, home: Option<&Path>) -> Studio
         (local_setup, remote)
     });
 
+    let local_name = remote::hostname();
+    let mut owners: Vec<(String, String)> = local_setup
+        .owned_dante
+        .iter()
+        .map(|device| (device.clone(), local_name.clone()))
+        .collect();
     let mut studio = Studio {
         dante: local_setup.dante,
         hosts: vec![HostStatus {
-            name: remote::hostname(),
+            name: local_name,
             local: true,
             fingerprint: identity
                 .as_ref()
@@ -95,6 +101,12 @@ pub fn read(local: impl FnOnce() -> Setup + Send, home: Option<&Path>) -> Studio
         };
         match result {
             Ok(setup) => {
+                owners.extend(
+                    setup
+                        .owned_dante
+                        .iter()
+                        .map(|device| (device.clone(), host.name.clone())),
+                );
                 merge_dante(&mut studio.dante, setup.dante);
                 host.focusrite = Some(setup.focusrite);
                 host.pipewire = Some(setup.pipewire);
@@ -103,6 +115,12 @@ pub fn read(local: impl FnOnce() -> Setup + Send, home: Option<&Path>) -> Studio
             Err(Unread::Failed(message)) => host.error = Some(message),
         }
         studio.hosts.push(host);
+    }
+    for device in &mut studio.dante.devices {
+        device.host = owners
+            .iter()
+            .find(|(name, _)| *name == device.name)
+            .map(|(_, host)| host.clone());
     }
     studio
 }
@@ -208,7 +226,7 @@ impl Studio {
     }
 
     pub fn render(&self) -> String {
-        let mut out = format!("── Dante ──\n{}", self.dante.render());
+        let mut out = format!("══ Dante network ══\n{}", self.dante.render());
         for host in &self.hosts {
             let _ = writeln!(
                 out,
@@ -252,6 +270,7 @@ mod tests {
     fn device(names: &[&str], error: Option<&str>) -> Device {
         Device {
             name: "avio".to_owned(),
+            host: None,
             product: None,
             model: None,
             manufacturer: None,

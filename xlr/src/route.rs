@@ -175,6 +175,7 @@ fn resolve_source(
     Ok(Source {
         device: device.name().to_owned(),
         channel: tx_channel.to_owned(),
+        local: false,
         names: Vec::new(),
     })
 }

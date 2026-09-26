@@ -91,6 +91,15 @@ they refer to, and `xlr names` checks each one against what is actually
 connected (`found`, `missing`, or `unverified` when its device can't be
 read), exiting nonzero if any are missing.
 
+A host can also declare Dante devices attached to it (Dante Via on the same
+machine is recognised automatically), so status shows which host each Dante
+device lives on:
+
+```toml
+[host]
+owns = ["dante/avio"]
+```
+
 Addresses: `dante/<device>/rx/<channel or number>`,
 `dante/<device>/tx/<channel>`, `focusrite/<device>/input/<n>`,
 `focusrite/<device>/monitor`, `pipewire/sink/<node>`, and

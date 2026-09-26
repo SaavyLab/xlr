@@ -12,14 +12,30 @@ use std::collections::BTreeSet;
 
 #[derive(Deserialize, Serialize)]
 pub struct Setup {
+    /// Dante devices attached to this host: those declared in `[host] owns`,
+    /// plus any (such as Dante Via) at this host's own address.
+    #[serde(default)]
+    pub owned_dante: Vec<String>,
     pub dante: DanteStatus,
     pub focusrite: FocusriteStatus,
     pub pipewire: PipewireStatus,
 }
 
 pub fn read(options: &dante::Options, config: &Config) -> Setup {
+    let dante = dante::status(options);
+    let mut owned_dante = config.owned_dante.clone();
+    for device in &dante.devices {
+        let at_this_host = device
+            .address
+            .parse::<std::net::SocketAddr>()
+            .is_ok_and(|address| address.ip() == std::net::IpAddr::V4(options.interface));
+        if at_this_host && !owned_dante.contains(&device.name) {
+            owned_dante.push(device.name.clone());
+        }
+    }
     let mut setup = Setup {
-        dante: dante::status(options),
+        owned_dante,
+        dante,
         focusrite: focusrite::status(options.timeout),
         pipewire: pipewire::status(),
     };
