@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 use std::{fmt::Write as _, time::Duration};
-use xlr_focusrite::usb::{FoundDevice, Session, find_devices};
+use xlr_focusrite::usb::{FoundDevice, Session, UsbError, find_devices};
 
 #[derive(Serialize)]
 pub struct Identity {
@@ -21,7 +21,31 @@ pub struct Status {
     pub monitor: Option<Monitor>,
     pub phantom_groups: Vec<PhantomGroup>,
     pub inputs: Vec<Input>,
+    /// Why settings were not read, when that is expected (for example,
+    /// Focusrite Control holds the device). Not a failure.
+    pub unavailable: Option<String>,
     pub error: Option<String>,
+}
+
+/// Every Focusrite device on this machine.
+#[derive(Serialize)]
+pub struct FocusriteStatus {
+    pub devices: Vec<Status>,
+    /// Why USB enumeration itself failed, if it did.
+    pub error: Option<String>,
+}
+
+impl FocusriteStatus {
+    pub fn has_errors(&self) -> bool {
+        self.error.is_some() || self.devices.iter().any(|device| device.error.is_some())
+    }
+
+    pub fn render(&self) -> String {
+        match &self.error {
+            Some(error) => format!("Focusrite USB enumeration failed: {error}\n"),
+            None => render_statuses(&self.devices),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -62,11 +86,17 @@ pub fn identify() -> Result<Vec<Identity>, Box<dyn std::error::Error>> {
     Ok(find_devices()?.iter().map(identity).collect())
 }
 
-pub fn status(timeout: Duration) -> Result<Vec<Status>, Box<dyn std::error::Error>> {
-    Ok(find_devices()?
-        .iter()
-        .map(|device| read(device, timeout))
-        .collect())
+pub fn status(timeout: Duration) -> FocusriteStatus {
+    match find_devices() {
+        Ok(devices) => FocusriteStatus {
+            devices: devices.iter().map(|device| read(device, timeout)).collect(),
+            error: None,
+        },
+        Err(error) => FocusriteStatus {
+            devices: Vec::new(),
+            error: Some(error.to_string()),
+        },
+    }
 }
 
 fn read(device: &FoundDevice, timeout: Duration) -> Status {
@@ -76,10 +106,11 @@ fn read(device: &FoundDevice, timeout: Duration) -> Status {
         monitor: None,
         phantom_groups: Vec::new(),
         inputs: Vec::new(),
+        unavailable: None,
         error: None,
     };
     if device.model().is_none() {
-        status.error = Some("model not supported yet".to_owned());
+        status.unavailable = Some("model not supported yet".to_owned());
         return status;
     }
     let result = Session::open(device, timeout).and_then(|mut session| {
@@ -112,6 +143,10 @@ fn read(device: &FoundDevice, timeout: Duration) -> Status {
                     instrument: input.instrument,
                 })
                 .collect();
+        }
+        Err(UsbError::Claim(_)) => {
+            status.unavailable =
+                Some("Focusrite Control is using the device; quit it to read settings".to_owned());
         }
         Err(error) => status.error = Some(error.to_string()),
     }
@@ -161,6 +196,10 @@ pub fn render_statuses(statuses: &[Status]) -> String {
                 .firmware
                 .map_or_else(|| "?".to_owned(), |firmware| firmware.to_string()),
         );
+        if let Some(reason) = &device.unavailable {
+            let _ = writeln!(out, "  unavailable: {reason}");
+            continue;
+        }
         if let Some(error) = &device.error {
             let _ = writeln!(out, "  error: {error}");
             continue;

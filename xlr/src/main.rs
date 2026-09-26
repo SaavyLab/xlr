@@ -7,6 +7,7 @@ mod dante;
 mod focusrite;
 mod network;
 mod route;
+mod setup;
 
 use clap::{Parser, Subcommand};
 use std::{net::Ipv4Addr, process::ExitCode, time::Duration};
@@ -37,7 +38,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Show every device, its channels, and what each receiver is routed from.
+    /// Show the whole setup: Dante devices and routes, and Focusrite
+    /// interfaces connected over USB.
     Status,
     /// Focusrite interfaces connected to this machine over USB.
     #[command(subcommand)]
@@ -97,14 +99,14 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     };
     match cli.command {
         Command::Status => {
-            let status = dante::status(&options)?;
+            let status = setup::read(&options);
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&status)?);
             } else {
                 print!("{}", status.render());
             }
             if status.has_errors() {
-                eprintln!("xlr: some devices could not be read; see their `error` fields");
+                eprintln!("xlr: some devices could not be read; see the `error` fields");
                 return Ok(ExitCode::FAILURE);
             }
             Ok(ExitCode::SUCCESS)
@@ -146,13 +148,13 @@ fn run_focusrite(
             Ok(ExitCode::SUCCESS)
         }
         FocusriteCommand::Status => {
-            let statuses = focusrite::status(Duration::from_millis(cli.timeout_ms))?;
+            let status = focusrite::status(Duration::from_millis(cli.timeout_ms));
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&statuses)?);
+                println!("{}", serde_json::to_string_pretty(&status)?);
             } else {
-                print!("{}", focusrite::render_statuses(&statuses));
+                print!("{}", status.render());
             }
-            Ok(if statuses.iter().any(|status| status.error.is_some()) {
+            Ok(if status.has_errors() {
                 ExitCode::FAILURE
             } else {
                 ExitCode::SUCCESS

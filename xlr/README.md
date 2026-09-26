@@ -15,7 +15,7 @@ cargo install xlr
 ## Usage
 
 ```bash
-xlr status                                   # every device, channel, and route
+xlr status                                   # the whole setup: Dante + Focusrite
 xlr status --json                            # the same, as stable JSON
 xlr route "Left@stage-box" "Mic 3@foh-rack"   # route a receiver from a source
 xlr route "Left@stage-box" --clear            # unsubscribe it

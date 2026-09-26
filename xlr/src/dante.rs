@@ -14,14 +14,11 @@ pub struct Options {
 }
 
 #[derive(Serialize)]
-pub struct Status {
-    pub dante: DanteStatus,
-}
-
-#[derive(Serialize)]
 pub struct DanteStatus {
     pub interface: Ipv4Addr,
     pub devices: Vec<Device>,
+    /// Why discovery itself failed, if it did.
+    pub error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -57,19 +54,24 @@ pub struct Source {
     pub channel: String,
 }
 
-pub fn status(options: &Options) -> Result<Status, Box<dyn std::error::Error>> {
-    let browser = DeviceBrowser::new(options.interface, options.discovery)?;
-    let devices = browser
-        .browse()?
-        .iter()
-        .map(|found| read_device(found, options.timeout))
-        .collect();
-    Ok(Status {
-        dante: DanteStatus {
-            interface: options.interface,
-            devices,
-        },
-    })
+pub fn status(options: &Options) -> DanteStatus {
+    let found = DeviceBrowser::new(options.interface, options.discovery)
+        .and_then(|browser| browser.browse());
+    let (devices, error) = match found {
+        Ok(found) => (
+            found
+                .iter()
+                .map(|device| read_device(device, options.timeout))
+                .collect(),
+            None,
+        ),
+        Err(error) => (Vec::new(), Some(error.to_string())),
+    };
+    DanteStatus {
+        interface: options.interface,
+        devices,
+        error,
+    }
 }
 
 fn read_device(found: &DiscoveredDevice, timeout: Duration) -> Device {
@@ -130,19 +132,18 @@ pub fn source(state: &SubscriptionState, own_name: &str) -> Option<Source> {
     }
 }
 
-impl Status {
+impl DanteStatus {
     pub fn has_errors(&self) -> bool {
-        self.dante
-            .devices
-            .iter()
-            .any(|device| device.error.is_some())
+        self.error.is_some() || self.devices.iter().any(|device| device.error.is_some())
     }
 
     pub fn render(&self) -> String {
         let mut out = String::new();
-        let devices = &self.dante.devices;
-        if devices.is_empty() {
-            let _ = writeln!(out, "No Dante devices found via {}.", self.dante.interface);
+        let devices = &self.devices;
+        if let Some(error) = &self.error {
+            let _ = writeln!(out, "Dante discovery failed: {error}");
+        } else if devices.is_empty() {
+            let _ = writeln!(out, "No Dante devices found via {}.", self.interface);
         }
         for device in devices {
             let product = device.product.as_deref().unwrap_or("unknown product");
