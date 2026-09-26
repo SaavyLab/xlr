@@ -289,13 +289,15 @@ mod tests {
         });
 
         let message = (0..50)
-            .find_map(|_| match pair(&client_home, "studio", &address, None, 9999, Role::Read) {
-                Err(error) if error.contains("refused") => {
-                    thread::sleep(Duration::from_millis(20));
-                    None
-                }
-                other => Some(other),
-            })
+            .find_map(
+                |_| match pair(&client_home, "studio", &address, None, 9999, Role::Read) {
+                    Err(error) if error.contains("refused") => {
+                        thread::sleep(Duration::from_millis(20));
+                        None
+                    }
+                    other => Some(other),
+                },
+            )
             .expect("server started")
             .unwrap();
         assert!(message.contains("xlr peers approve"), "{message}");
@@ -303,7 +305,10 @@ mod tests {
         // Before approval: the client already trusts the host, not vice versa.
         let client_peers = Peers::load(&client_home).unwrap();
         assert_eq!(client_peers.role(&host_fingerprint), Some(Role::Read));
-        assert_eq!(Peers::load(&host_home).unwrap().role(&client_fingerprint), None);
+        assert_eq!(
+            Peers::load(&host_home).unwrap().role(&client_fingerprint),
+            None
+        );
 
         let code = pairing_code(&host_fingerprint, &client_fingerprint);
         let approved = approve(&host_home, &code, Role::Read).unwrap();
