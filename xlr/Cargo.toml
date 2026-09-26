@@ -1,0 +1,22 @@
+[package]
+name = "xlr"
+version = "0.0.2"
+description = "An opinionated CLI for letting people and AI agents control a pro audio setup."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["audio", "dante", "cli", "routing", "agent"]
+categories = ["command-line-utilities", "multimedia::audio"]
+
+[[bin]]
+name = "xlr"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5.53", features = ["derive", "env"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+xlr-dante = { version = "0.1.0", path = "../xlr-dante" }

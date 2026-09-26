@@ -1,0 +1,15 @@
+[package]
+name = "xlr-dante"
+version = "0.1.0"
+description = "Programmatic control for Dante audio networks: subscription routing and channel discovery."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["dante", "audio", "aoip", "routing", "mdns"]
+categories = ["multimedia::audio", "network-programming"]
+
+[dependencies]
+socket2 = { version = "0.6.1", features = ["all"] }
