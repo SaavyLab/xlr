@@ -114,12 +114,33 @@ xlr undo                             # revert the last change from the journals
 An agent edits or chooses a desired state and presents the diff instead of
 issuing a sequence of imperative commands.
 
+## Intent
+
+Names say what something is; intent says what it should be and why. A
+host's configuration can carry both:
+
+```toml
+[names.guitar]
+at = "focusrite/scarlett/input/1"
+note = "direct in, all effects in software"
+expect = { instrument = true, phantom = false }
+```
+
+`xlr check` reports every place the hardware disagrees with its stated
+intent, in your terms ("guitar is in line mode; expected instrument"), and the
+notes give an agent the reasons that live state cannot. Anything `xlr`
+encounters but does not understand is reported rather than hidden, so an
+agent knows when to look past it.
+
 ## Diagnosis
 
 - **Trace**: follow a signal end to end, for example physical input →
   Scarlett routing → Via → Dante → AVIO → PipeWire → application.
 - **Meters**: show whether signal is actually arriving at each hop, so a dead
   mic, a wrong route, and a muted output look different.
+- **Coverage that tracing needs**: the Scarlett's internal routing matrix
+  (what "Channel 3" actually carries), sample rate and clock leader, and Dante
+  latency.
 
 ## Agent interface
 
@@ -134,9 +155,11 @@ issuing a sequence of imperative commands.
    `route` speak names.~~ Done.
 2. ~~PipeWire read backend.~~ Done.
 3. ~~`xlr serve` with key-pinned trust and pairing; multi-host `status`,
-   read-only.~~ Done.
+   read-only.~~ Done. `xlr pair` pairs both directions with one approval.
 4. Remote control role; snapshot, apply, and undo; host-enforced guardrails.
-5. Trace, meters, and `xlr agent-guide`.
+5. Intent (`note`, `expect`) and `xlr check`.
+6. Trace (starting with the Scarlett routing matrix), meters, clocking, and
+   `xlr agent-guide`.
 
 Scarlett writes can land once the read path is confirmed on hardware.
 

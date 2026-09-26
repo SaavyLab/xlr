@@ -51,13 +51,19 @@ you control from:
 xlr serve                      # listens on 0.0.0.0:7373
 xlr id                         # shows its fingerprint
 
-# on the machine you control from
-xlr hosts add mac-mini 192.168.1.20 --fingerprint <fingerprint from xlr id>
+# on the machine you control from (also running `xlr serve`)
+xlr pair mac-mini 192.168.1.20 --fingerprint <fingerprint from xlr id>
 
 # back on mac-mini: check the code matches, then approve
 xlr peers                      # shows the pending request and its code
-xlr peers approve 954466
+xlr peers approve 954466       # pairs both ways: each machine now reads the other
 ```
+
+For a machine that only reads (a laptop, say), use `xlr hosts add` instead of
+`xlr pair`: same ceremony, one direction. The host adds the pairing machine
+back using the address the request came from, so pair over an address that
+works in both directions (for example, both machines' tailnet addresses when
+a firewall blocks the LAN).
 
 After that, `xlr status` shows the whole studio: Dante once, and each host's
 Focusrite and PipeWire state under that host, each labelled with the names

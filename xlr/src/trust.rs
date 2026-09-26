@@ -62,6 +62,10 @@ pub struct Peer {
 pub struct Pending {
     pub name: String,
     pub code: String,
+    /// Where the requester serves, for `xlr pair` requests: approving one
+    /// also adds the requester as a host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
     /// Seconds since the Unix epoch.
     pub requested_at: u64,
 }
@@ -92,12 +96,19 @@ impl Peers {
     }
 
     /// Records (or refreshes) a pairing request.
-    pub fn request(&mut self, fingerprint: &Fingerprint, name: &str, code: String) {
+    pub fn request(
+        &mut self,
+        fingerprint: &Fingerprint,
+        name: &str,
+        code: String,
+        address: Option<String>,
+    ) {
         self.pending.insert(
             fingerprint.to_string(),
             Pending {
                 name: name.to_owned(),
                 code,
+                address,
                 requested_at: now(),
             },
         );
@@ -113,8 +124,8 @@ impl Peers {
     }
 
     /// Approves the pending request whose code or fingerprint prefix
-    /// matches `selector`, returning its fingerprint and name.
-    pub fn approve(&mut self, selector: &str, role: Role) -> Result<(String, String), String> {
+    /// matches `selector`, returning its fingerprint and the request.
+    pub fn approve(&mut self, selector: &str, role: Role) -> Result<(String, Pending), String> {
         let wanted = selector.replace([' ', '-'], "").to_ascii_lowercase();
         let matches: Vec<String> = self
             .pending
@@ -146,7 +157,7 @@ impl Peers {
                 role,
             },
         );
-        Ok((fingerprint, pending.name))
+        Ok((fingerprint, pending))
     }
 }
 
@@ -184,13 +195,23 @@ mod tests {
         let mut peers = Peers::default();
         let a = Fingerprint::of(b"a");
         let b = Fingerprint::of(b"b");
-        peers.request(&a, "laptop", "123 456".to_owned());
-        peers.request(&b, "desktop", "654 321".to_owned());
+        peers.request(&a, "laptop", "123 456".to_owned(), None);
+        peers.request(
+            &b,
+            "desktop",
+            "654 321".to_owned(),
+            Some("10.0.0.9:7373".to_owned()),
+        );
         assert_eq!(peers.role(&a), None);
-        let (approved, name) = peers.approve("123456", Role::Read).unwrap();
-        assert_eq!((approved.as_str(), name.as_str()), (a.as_str(), "laptop"));
+        let (approved, pending) = peers.approve("123456", Role::Read).unwrap();
+        assert_eq!(
+            (approved.as_str(), pending.name.as_str()),
+            (a.as_str(), "laptop")
+        );
+        assert_eq!(pending.address, None);
         assert_eq!(peers.role(&a), Some(Role::Read));
-        peers.approve(&b.as_str()[..8], Role::Control).unwrap();
+        let (_, mutual) = peers.approve(&b.as_str()[..8], Role::Control).unwrap();
+        assert_eq!(mutual.address.as_deref(), Some("10.0.0.9:7373"));
         assert_eq!(peers.role(&b), Some(Role::Control));
         assert!(peers.pending.is_empty());
         assert!(peers.approve("000000", Role::Read).is_err());
@@ -204,6 +225,7 @@ mod tests {
                 &Fingerprint::of(&index.to_be_bytes()),
                 "x",
                 "000 000".to_owned(),
+                None,
             );
         }
         assert_eq!(peers.pending.len(), MAX_PENDING);
@@ -213,7 +235,7 @@ mod tests {
     fn files_round_trip() {
         let home = std::env::temp_dir().join(format!("xlr-trust-test-{}", std::process::id()));
         let mut peers = Peers::default();
-        peers.request(&Fingerprint::of(b"a"), "laptop", "123 456".to_owned());
+        peers.request(&Fingerprint::of(b"a"), "laptop", "123 456".to_owned(), None);
         peers.approve("123456", Role::Control).unwrap();
         peers.save(&home).unwrap();
         assert_eq!(Peers::load(&home).unwrap().approved.len(), 1);

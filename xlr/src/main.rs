@@ -68,6 +68,26 @@ enum Command {
         #[arg(long, default_value = "0.0.0.0:7373")]
         listen: SocketAddr,
     },
+    /// Pair with another machine in both directions, with one approval.
+    ///
+    /// Pins the host, pre-approves it to read this machine, and asks it to
+    /// pair. Approving on the host (`xlr peers approve <code>`) also adds this
+    /// machine there as a host. Both machines should run `xlr serve`.
+    Pair {
+        /// Your name for the host, e.g. `mac-mini`.
+        name: String,
+        /// Its address, e.g. `192.168.1.20`.
+        address: String,
+        /// Expected fingerprint (from `xlr id` on that host).
+        #[arg(long)]
+        fingerprint: Option<String>,
+        /// The port this machine's `xlr serve` listens on.
+        #[arg(long, default_value_t = remote::DEFAULT_PORT)]
+        port: u16,
+        /// What the host may do on this machine.
+        #[arg(long, value_enum, default_value_t = RoleArg::Read)]
+        grant: RoleArg,
+    },
     /// Print this machine's name and identity fingerprint.
     Id,
     /// Hosts this machine reads from. Lists them, with pairing state, when
@@ -259,7 +279,11 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             )?;
             Ok(ExitCode::SUCCESS)
         }
-        Command::Focusrite(_) | Command::Id | Command::Hosts { .. } | Command::Peers { .. } => {
+        Command::Focusrite(_)
+        | Command::Id
+        | Command::Pair { .. }
+        | Command::Hosts { .. }
+        | Command::Peers { .. } => {
             unreachable!("handled above")
         }
         Command::Route {
@@ -318,6 +342,20 @@ fn run_pairing(command: &Command) -> Result<Option<String>, String> {
     let home = || remote::home();
     Ok(Some(match command {
         Command::Id => pairing::id(&home()?)?,
+        Command::Pair {
+            name,
+            address,
+            fingerprint,
+            port,
+            grant,
+        } => pairing::pair(
+            &home()?,
+            name,
+            address,
+            fingerprint.as_deref(),
+            *port,
+            role(*grant),
+        )?,
         Command::Hosts { command } => match command {
             None => pairing::list_hosts(&home()?)?,
             Some(HostsCommand::Add {
@@ -329,16 +367,19 @@ fn run_pairing(command: &Command) -> Result<Option<String>, String> {
         },
         Command::Peers { command } => match command {
             None => pairing::list_peers(&home()?)?,
-            Some(PeersCommand::Approve { selector, role }) => pairing::approve(
-                &home()?,
+            Some(PeersCommand::Approve {
                 selector,
-                match role {
-                    RoleArg::Read => trust::Role::Read,
-                    RoleArg::Control => trust::Role::Control,
-                },
-            )?,
+                role: granted,
+            }) => pairing::approve(&home()?, selector, role(*granted))?,
             Some(PeersCommand::Remove { selector }) => pairing::remove_peer(&home()?, selector)?,
         },
         _ => return Ok(None),
     }))
+}
+
+fn role(arg: RoleArg) -> trust::Role {
+    match arg {
+        RoleArg::Read => trust::Role::Read,
+        RoleArg::Control => trust::Role::Control,
+    }
 }

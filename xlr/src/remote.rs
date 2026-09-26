@@ -28,7 +28,13 @@ const IO_TIMEOUT: Duration = Duration::from_secs(15);
 #[serde(tag = "method", rename_all = "kebab-case")]
 pub enum Request {
     /// Introduces the client; answers with its role, or starts pairing.
-    Hello { name: String },
+    Hello {
+        name: String,
+        /// Set by `xlr pair`: the port the client itself serves on, so the
+        /// host can add it back once approved.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        serve_port: Option<u16>,
+    },
     /// This host's view of its hardware.
     Status,
 }
@@ -178,6 +184,7 @@ fn handle(
     hardware: &Mutex<()>,
     peers_file: &Mutex<()>,
 ) -> Result<(), String> {
+    let peer_ip = tcp.peer_addr().ok().map(|address| address.ip());
     tcp.set_read_timeout(Some(IO_TIMEOUT)).ok();
     tcp.set_write_timeout(Some(IO_TIMEOUT)).ok();
     let connection = ServerConnection::new(config).map_err(|error| error.to_string())?;
@@ -201,7 +208,7 @@ fn handle(
         .map_err(|error| error.to_string())?;
     let response = match serde_json::from_str::<Request>(&line) {
         Err(error) => Response::error("bad-request", error.to_string(), None),
-        Ok(request) => respond(&request, &client, server, hardware, peers_file),
+        Ok(request) => respond(&request, &client, peer_ip, server, hardware, peers_file),
     };
     eprintln!(
         "xlr serve: {} {} -> {}",
@@ -222,6 +229,7 @@ fn handle(
 fn respond(
     request: &Request,
     client: &Fingerprint,
+    peer_ip: Option<std::net::IpAddr>,
     server: &Server,
     hardware: &Mutex<()>,
     peers_file: &Mutex<()>,
@@ -236,11 +244,16 @@ fn respond(
             Some(role) => role,
             None => {
                 let code = pairing_code(&server.identity.fingerprint, client);
-                let name = match request {
-                    Request::Hello { name } => name.as_str(),
-                    Request::Status => "(unnamed)",
+                let (name, address) = match request {
+                    Request::Hello { name, serve_port } => (
+                        name.as_str(),
+                        serve_port
+                            .zip(peer_ip)
+                            .map(|(port, ip)| SocketAddr::new(ip, port).to_string()),
+                    ),
+                    Request::Status => ("(unnamed)", None),
                 };
-                peers.request(client, name, code.clone());
+                peers.request(client, name, code.clone(), address);
                 if let Err(error) = peers.save(&server.home) {
                     return Response::error("failed", error, None);
                 }
@@ -300,7 +313,8 @@ mod tests {
     fn requests_have_a_stable_wire_shape() {
         assert_eq!(
             serde_json::to_string(&Request::Hello {
-                name: "desk".to_owned()
+                name: "desk".to_owned(),
+                serve_port: None
             })
             .unwrap(),
             r#"{"method":"hello","name":"desk"}"#
@@ -349,6 +363,7 @@ mod tests {
             None,
             Request::Hello {
                 name: "desk".to_owned(),
+                serve_port: None,
             },
         )
         .unwrap();
