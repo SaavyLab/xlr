@@ -57,7 +57,7 @@
           # source into the registry cache once and reuses builds of it, so a
           # changed but unbumped crate would verify against stale code. Verify
           # from a clean extraction in a throwaway target directory instead.
-          rm -rf "''${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/xlr-dante-*
+          rm -rf "''${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/xlr-dante-* "''${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/xlr-focusrite-*
           verify_dir="$(mktemp -d)"
           trap 'rm -rf "$verify_dir"' EXIT
           CARGO_TARGET_DIR="$verify_dir" cargo package --workspace --allow-dirty

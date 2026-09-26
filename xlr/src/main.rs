@@ -4,6 +4,7 @@
 //! the same commands serve people and AI agents.
 
 mod dante;
+mod focusrite;
 mod network;
 mod route;
 
@@ -38,6 +39,9 @@ struct Cli {
 enum Command {
     /// Show every device, its channels, and what each receiver is routed from.
     Status,
+    /// Focusrite interfaces connected to this machine over USB.
+    #[command(subcommand)]
+    Focusrite(FocusriteCommand),
     /// Route a receiver channel from a transmitter channel, or clear it.
     ///
     /// Channels are written `channel@device`; a receiver may also be given by
@@ -58,6 +62,15 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum FocusriteCommand {
+    /// List connected Focusrite devices without opening them.
+    Identify,
+    /// Read input and monitor switch settings (read-only). Focusrite
+    /// Control must not be running.
+    Status,
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match run(&cli) {
@@ -70,6 +83,9 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    if let Command::Focusrite(command) = &cli.command {
+        return run_focusrite(cli, command);
+    }
     let interface = match cli.interface {
         Some(interface) => interface,
         None => network::default_interface()?,
@@ -93,6 +109,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             }
             Ok(ExitCode::SUCCESS)
         }
+        Command::Focusrite(_) => unreachable!("handled above"),
         Command::Route {
             ref receiver,
             ref source,
@@ -109,6 +126,36 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 ExitCode::SUCCESS
             } else {
                 ExitCode::FAILURE
+            })
+        }
+    }
+}
+
+fn run_focusrite(
+    cli: &Cli,
+    command: &FocusriteCommand,
+) -> Result<ExitCode, Box<dyn std::error::Error>> {
+    match command {
+        FocusriteCommand::Identify => {
+            let identities = focusrite::identify()?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&identities)?);
+            } else {
+                print!("{}", focusrite::render_identities(&identities));
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        FocusriteCommand::Status => {
+            let statuses = focusrite::status(Duration::from_millis(cli.timeout_ms))?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&statuses)?);
+            } else {
+                print!("{}", focusrite::render_statuses(&statuses));
+            }
+            Ok(if statuses.iter().any(|status| status.error.is_some()) {
+                ExitCode::FAILURE
+            } else {
+                ExitCode::SUCCESS
             })
         }
     }

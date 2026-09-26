@@ -1,0 +1,15 @@
+[package]
+name = "xlr-focusrite"
+version = "0.1.0"
+description = "Programmatic control for Focusrite Scarlett interfaces over their USB control interface."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["focusrite", "scarlett", "audio", "usb", "mixer"]
+categories = ["multimedia::audio", "hardware-support"]
+
+[dependencies]
+nusb = "0.2.7"

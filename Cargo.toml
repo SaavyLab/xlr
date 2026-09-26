@@ -1,5 +1,5 @@
 [workspace]
-members = ["xlr", "xlr-dante"]
+members = ["xlr", "xlr-dante", "xlr-focusrite"]
 resolver = "3"
 
 [workspace.package]

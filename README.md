@@ -19,6 +19,16 @@ cargo install xlr
 xlr status
 ```
 
+### [xlr-focusrite](./xlr-focusrite/)
+
+Direct USB control of Focusrite Scarlett interfaces, no Focusrite Control
+required. Currently reads the Scarlett 18i20 3rd Gen's switches.
+
+```toml
+[dependencies]
+xlr-focusrite = "0.1"
+```
+
 ### [xlr-dante](./xlr-dante/)
 
 Programmatic control for Dante audio networks: discover devices, list their
@@ -41,9 +51,10 @@ nix run .#ci    # fmt, clippy, tests, and package verification
 
 ## Trademarks
 
-Dante is a trademark of Audinate Pty Ltd. xlr is an independent project and is
-not affiliated with, endorsed by, or supported by Audinate or any other audio
-vendor.
+Dante is a trademark of Audinate Pty Ltd. Focusrite and Scarlett are
+trademarks of Focusrite Audio Engineering Ltd. xlr is an independent project
+and is not affiliated with, endorsed by, or supported by Audinate, Focusrite,
+or any other audio vendor.
 
 ---
 
