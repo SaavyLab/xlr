@@ -1,6 +1,10 @@
 //! `xlr route`: change one receiver's subscription, safely.
 
-use crate::dante::{self, Options, Source};
+use crate::{
+    address::Address,
+    config::Config,
+    dante::{self, Options, Source},
+};
 use serde::Serialize;
 use std::{thread, time::Duration};
 use xlr_dante::{
@@ -41,20 +45,23 @@ pub struct ReceiverRef {
 
 pub fn run(
     options: &Options,
+    config: &Config,
     receiver: &str,
     source: Option<&str>,
     dry_run: bool,
 ) -> Result<Outcome, Box<dyn std::error::Error>> {
-    let (receiver_name, device_name) = split_address(receiver)?;
-    let requested_source = source.map(split_address).transpose()?;
+    let (device_name, receiver_name) = resolve(config, receiver, Kind::Receiver)?;
+    let requested_source = source
+        .map(|source| resolve(config, source, Kind::Transmitter))
+        .transpose()?;
 
     let devices = DeviceBrowser::new(options.interface, options.discovery)?.browse()?;
-    let device = find_device(&devices, device_name)?;
+    let device = find_device(&devices, &device_name)?;
     let mut client = ArcClient::connect(device.arc_address(), options.timeout)?;
     let receivers = client.receiver_subscriptions()?;
     let entry = receivers
         .iter()
-        .find(|entry| entry.name() == Some(receiver_name))
+        .find(|entry| entry.name() == Some(receiver_name.as_str()))
         .or_else(|| {
             let number: u16 = receiver_name.parse().ok()?;
             receivers
@@ -71,8 +78,8 @@ pub fn run(
 
     let requested = match requested_source {
         None => None,
-        Some((tx_channel, tx_device)) => {
-            Some(resolve_source(&devices, tx_channel, tx_device, options)?)
+        Some((tx_device, tx_channel)) => {
+            Some(resolve_source(&devices, &tx_channel, &tx_device, options)?)
         }
     };
     let before = dante::source(entry.state(), device.name());
@@ -91,6 +98,7 @@ pub fn run(
         ok: true,
     };
     if before == requested {
+        name_sources(&mut outcome, config);
         return Ok(outcome);
     }
     let protocol = device.arc_protocol();
@@ -104,6 +112,7 @@ pub fn run(
         .into());
     }
     if dry_run {
+        name_sources(&mut outcome, config);
         return Ok(outcome);
     }
 
@@ -123,6 +132,7 @@ pub fn run(
 
     outcome.after = read_back(&mut client, channel, device.name(), &requested)?;
     outcome.ok = outcome.after == requested;
+    name_sources(&mut outcome, config);
     Ok(outcome)
 }
 
@@ -165,6 +175,7 @@ fn resolve_source(
     Ok(Source {
         device: device.name().to_owned(),
         channel: tx_channel.to_owned(),
+        names: Vec::new(),
     })
 }
 
@@ -206,7 +217,12 @@ fn split_address(address: &str) -> Result<(&str, &str), String> {
 impl Outcome {
     pub fn render(&self) -> String {
         let show = |source: &Option<Source>| match source {
-            Some(source) => format!("{}@{}", source.channel, source.device),
+            Some(source) => format!(
+                "{}@{}{}",
+                source.channel,
+                source.device,
+                dante::tags(&source.names)
+            ),
             None => "(nothing)".to_owned(),
         };
         let receiver = match &self.receiver.name {
@@ -253,5 +269,54 @@ mod tests {
         for invalid in ["Left", "@dev", "Left@", ""] {
             assert!(split_address(invalid).is_err(), "{invalid}");
         }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Kind {
+    Receiver,
+    Transmitter,
+}
+
+/// Resolves a name, a `dante/…` address, or `channel@device` to
+/// `(device, channel)`.
+fn resolve(config: &Config, text: &str, kind: Kind) -> Result<(String, String), String> {
+    let address = match config.names.get(text) {
+        Some(address) => Some(address.clone()),
+        None if text.starts_with("dante/") => Some(config.parse_address(text)?),
+        None => None,
+    };
+    match (address, kind) {
+        (Some(Address::DanteRx { device, channel }), Kind::Receiver)
+        | (Some(Address::DanteTx { device, channel }), Kind::Transmitter) => Ok((device, channel)),
+        (Some(address), _) => Err(format!(
+            "`{text}` is {address}, which is not a Dante {}",
+            if kind == Kind::Receiver {
+                "receiver"
+            } else {
+                "transmitter channel"
+            }
+        )),
+        (None, _) => {
+            let (channel, device) = split_address(text)?;
+            Ok((device.to_owned(), channel.to_owned()))
+        }
+    }
+}
+
+/// Attaches your names to the sources in an outcome.
+fn name_sources(outcome: &mut Outcome, config: &Config) {
+    for source in [
+        &mut outcome.before,
+        &mut outcome.requested,
+        &mut outcome.after,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        source.names = config.names_for(&Address::DanteTx {
+            device: source.device.clone(),
+            channel: source.channel.clone(),
+        });
     }
 }

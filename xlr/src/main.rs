@@ -3,6 +3,8 @@
 //! Output is human-readable by default and stable JSON with `--json`, so
 //! the same commands serve people and AI agents.
 
+mod address;
+mod config;
 mod dante;
 mod focusrite;
 mod network;
@@ -39,20 +41,34 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Show the whole setup: Dante devices and routes, and Focusrite
-    /// interfaces connected over USB.
+    /// interfaces connected over USB, labelled with your names.
     Status,
+    /// List your names and check each against live hardware.
+    ///
+    /// Names are defined in `$XLR_CONFIG` or `~/.config/xlr/xlr.toml`:
+    ///
+    ///   [devices]
+    ///   scarlett = "focusrite/<serial>"
+    ///
+    ///   [names]
+    ///   guitar = "focusrite/scarlett/input/1"
+    ///   desktop-left = "dante/<device>/rx/Left"
+    ///   mac-out-9 = "dante/<device>/tx/<channel>"
+    Names,
     /// Focusrite interfaces connected to this machine over USB.
     #[command(subcommand)]
     Focusrite(FocusriteCommand),
     /// Route a receiver channel from a transmitter channel, or clear it.
     ///
-    /// Channels are written `channel@device`; a receiver may also be given by
-    /// number (`2@device`). The source must exist, the write is skipped when
-    /// the route is already in place, and the result is read back.
+    /// Each side may be one of your names, an address
+    /// (`dante/<device>/rx/<channel>`), or `channel@device`. A receiver may
+    /// also be given by number (`2@device`). The source must exist, the write
+    /// is skipped when the route is already in place, and the result is read
+    /// back.
     Route {
-        /// The receiver to change, e.g. `Left@stage-box`.
+        /// The receiver to change, e.g. `desktop-left` or `Left@stage-box`.
         receiver: String,
-        /// The transmitter to route from, e.g. `Mic 3@foh-rack`.
+        /// The transmitter to route from, e.g. `mac-out-9` or `Mic 3@foh-rack`.
         #[arg(required_unless_present = "clear", conflicts_with = "clear")]
         source: Option<String>,
         /// Remove the receiver's subscription instead.
@@ -88,6 +104,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     if let Command::Focusrite(command) = &cli.command {
         return run_focusrite(cli, command);
     }
+    let config = config::Config::load()?;
     let interface = match cli.interface {
         Some(interface) => interface,
         None => network::default_interface()?,
@@ -99,7 +116,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     };
     match cli.command {
         Command::Status => {
-            let status = setup::read(&options);
+            let status = setup::read(&options, &config);
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&status)?);
             } else {
@@ -111,6 +128,37 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             }
             Ok(ExitCode::SUCCESS)
         }
+        Command::Names => {
+            let checks = setup::check_names(&config, &setup::read(&options, &config));
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&checks)?);
+            } else if checks.is_empty() {
+                println!(
+                    "No names defined. Add a [names] table to {}; see `xlr names --help`.",
+                    config.path.as_deref().map_or_else(
+                        || "~/.config/xlr/xlr.toml".to_owned(),
+                        |path| path.display().to_string()
+                    )
+                );
+            } else {
+                let width = checks
+                    .iter()
+                    .map(|check| check.name.len())
+                    .max()
+                    .unwrap_or(0);
+                for check in &checks {
+                    println!(
+                        "{:<width$}  {:<10}  {}",
+                        check.name, check.state, check.address
+                    );
+                }
+            }
+            Ok(if checks.iter().any(|check| check.state == "missing") {
+                ExitCode::FAILURE
+            } else {
+                ExitCode::SUCCESS
+            })
+        }
         Command::Focusrite(_) => unreachable!("handled above"),
         Command::Route {
             ref receiver,
@@ -118,7 +166,7 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
             clear: _,
             dry_run,
         } => {
-            let outcome = route::run(&options, receiver, source.as_deref(), dry_run)?;
+            let outcome = route::run(&options, &config, receiver, source.as_deref(), dry_run)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&outcome)?);
             } else {

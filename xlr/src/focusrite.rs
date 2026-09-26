@@ -1,11 +1,14 @@
 //! Focusrite backend: USB identification and read-only settings.
 
+use crate::dante::tags;
 use serde::Serialize;
 use std::{fmt::Write as _, time::Duration};
 use xlr_focusrite::usb::{FoundDevice, Session, UsbError, find_devices};
 
 #[derive(Serialize)]
 pub struct Identity {
+    /// The device segment of this device's addresses: its serial number.
+    pub id: String,
     pub product: Option<String>,
     pub model: Option<&'static str>,
     pub product_id: String,
@@ -52,6 +55,8 @@ impl FocusriteStatus {
 pub struct Monitor {
     pub mute: bool,
     pub dim: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -70,10 +75,13 @@ pub struct Input {
     /// software switch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instrument: Option<bool>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
 }
 
 fn identity(device: &FoundDevice) -> Identity {
     Identity {
+        id: device_id(device),
         product: device.product().map(str::to_owned),
         model: device.model().map(|model| model.name()),
         product_id: format!("0x{:04x}", device.product_id()),
@@ -122,6 +130,7 @@ fn read(device: &FoundDevice, timeout: Duration) -> Status {
             status.monitor = Some(Monitor {
                 mute: settings.mute,
                 dim: settings.dim,
+                names: Vec::new(),
             });
             status.phantom_groups = settings
                 .phantom_groups
@@ -141,6 +150,7 @@ fn read(device: &FoundDevice, timeout: Duration) -> Status {
                     pad: input.pad,
                     air: input.air,
                     instrument: input.instrument,
+                    names: Vec::new(),
                 })
                 .collect();
         }
@@ -223,12 +233,21 @@ pub fn render_statuses(statuses: &[Status]) -> String {
             };
             let _ = writeln!(
                 out,
-                "  in {}  pad {:<3}  air {:<3}{mode}",
+                "  in {}  pad {:<3}  air {:<3}{mode}{}",
                 input.input,
                 on(input.pad),
                 on(input.air),
+                tags(&input.names),
             );
         }
     }
     out
+}
+
+/// The address device segment for a Focusrite device: its serial number,
+/// or its product ID when it reports none.
+fn device_id(device: &FoundDevice) -> String {
+    device
+        .serial_number()
+        .map_or_else(|| format!("{:04x}", device.product_id()), str::to_owned)
 }

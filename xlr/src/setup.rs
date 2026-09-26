@@ -1,10 +1,13 @@
 //! The whole setup: every backend's view in one report.
 
 use crate::{
+    address::Address,
+    config::Config,
     dante::{self, DanteStatus},
     focusrite::{self, FocusriteStatus},
 };
 use serde::Serialize;
+use std::collections::BTreeSet;
 
 #[derive(Serialize)]
 pub struct Setup {
@@ -12,11 +15,13 @@ pub struct Setup {
     pub focusrite: FocusriteStatus,
 }
 
-pub fn read(options: &dante::Options) -> Setup {
-    Setup {
+pub fn read(options: &dante::Options, config: &Config) -> Setup {
+    let mut setup = Setup {
         dante: dante::status(options),
         focusrite: focusrite::status(options.timeout),
-    }
+    };
+    setup.annotate(config);
+    setup
 }
 
 impl Setup {
@@ -31,4 +36,129 @@ impl Setup {
             self.focusrite.render()
         )
     }
+
+    /// Attaches your names to everything they refer to.
+    fn annotate(&mut self, config: &Config) {
+        for device in &mut self.dante.devices {
+            for tx in &mut device.transmitters {
+                tx.names = config.names_for(&Address::DanteTx {
+                    device: device.name.clone(),
+                    channel: tx.name.clone(),
+                });
+            }
+            for rx in &mut device.receivers {
+                rx.names = receiver_addresses(&device.name, rx.channel, rx.name.as_deref())
+                    .iter()
+                    .flat_map(|address| config.names_for(address))
+                    .collect();
+                if let Some(source) = &mut rx.source {
+                    source.names = config.names_for(&Address::DanteTx {
+                        device: source.device.clone(),
+                        channel: source.channel.clone(),
+                    });
+                }
+            }
+        }
+        for device in &mut self.focusrite.devices {
+            let id = device.identity.id.clone();
+            if let Some(monitor) = &mut device.monitor {
+                monitor.names = config.names_for(&Address::FocusriteMonitor { device: id.clone() });
+            }
+            for input in &mut device.inputs {
+                input.names = config.names_for(&Address::FocusriteInput {
+                    device: id.clone(),
+                    input: input.input,
+                });
+            }
+        }
+    }
+
+    /// Every address that currently exists, and every device segment whose
+    /// backend could not be read (so its addresses cannot be checked).
+    pub fn addresses(&self) -> (BTreeSet<Address>, BTreeSet<String>) {
+        let mut live = BTreeSet::new();
+        let mut unverified = BTreeSet::new();
+        for device in &self.dante.devices {
+            if device.error.is_some() {
+                unverified.insert(format!("dante/{}", device.name));
+            }
+            for tx in &device.transmitters {
+                live.insert(Address::DanteTx {
+                    device: device.name.clone(),
+                    channel: tx.name.clone(),
+                });
+            }
+            for rx in &device.receivers {
+                live.extend(receiver_addresses(
+                    &device.name,
+                    rx.channel,
+                    rx.name.as_deref(),
+                ));
+            }
+        }
+        for device in &self.focusrite.devices {
+            let id = device.identity.id.clone();
+            if device.error.is_some() || device.unavailable.is_some() {
+                unverified.insert(format!("focusrite/{id}"));
+            }
+            if device.monitor.is_some() {
+                live.insert(Address::FocusriteMonitor { device: id.clone() });
+            }
+            for input in &device.inputs {
+                live.insert(Address::FocusriteInput {
+                    device: id.clone(),
+                    input: input.input,
+                });
+            }
+        }
+        (live, unverified)
+    }
+}
+
+/// A receiver is addressable by its name and by its number.
+fn receiver_addresses(device: &str, channel: u16, name: Option<&str>) -> Vec<Address> {
+    let mut addresses = vec![Address::DanteRx {
+        device: device.to_owned(),
+        channel: channel.to_string(),
+    }];
+    if let Some(name) = name {
+        addresses.push(Address::DanteRx {
+            device: device.to_owned(),
+            channel: name.to_owned(),
+        });
+    }
+    addresses
+}
+
+/// One configured name and whether it matches live hardware.
+#[derive(Serialize)]
+pub struct NameCheck {
+    pub name: String,
+    pub address: String,
+    /// `found`, `missing`, or `unverified` (its device could not be read).
+    pub state: &'static str,
+}
+
+pub fn check_names(config: &Config, setup: &Setup) -> Vec<NameCheck> {
+    let (live, unverified) = setup.addresses();
+    config
+        .names
+        .iter()
+        .map(|(name, address)| {
+            let text = address.to_string();
+            let device_prefix: String = text.splitn(3, '/').take(2).collect::<Vec<_>>().join("/");
+            let state = if live.contains(address) {
+                "found"
+            } else if unverified.contains(&device_prefix) {
+                "unverified"
+            } else {
+                "missing"
+            };
+            NameCheck {
+                name: name.clone(),
+                address: text,
+                state,
+            }
+        })
+        .collect()
 }

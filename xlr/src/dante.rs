@@ -38,6 +38,9 @@ pub struct Device {
 pub struct Transmitter {
     pub channel: u16,
     pub name: String,
+    /// Your names for this channel.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -46,12 +49,18 @@ pub struct Receiver {
     pub name: Option<String>,
     /// The transmitter this receiver is subscribed to, or `null`.
     pub source: Option<Source>,
+    /// Your names for this receiver.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Source {
     pub device: String,
     pub channel: String,
+    /// Your names for the source channel.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub names: Vec<String>,
 }
 
 pub fn status(options: &Options) -> DanteStatus {
@@ -93,6 +102,7 @@ fn read_device(found: &DiscoveredDevice, timeout: Duration) -> Device {
             .map(|channel| Transmitter {
                 channel: channel.number(),
                 name: channel.name().to_owned(),
+                names: Vec::new(),
             })
             .collect();
         device.receivers = client
@@ -115,6 +125,7 @@ fn receiver(entry: &ReceiverSubscription, own_name: &str) -> Receiver {
         channel: entry.receiver_channel().value(),
         name: entry.name().map(str::to_owned),
         source: source(entry.state(), own_name),
+        names: Vec::new(),
     }
 }
 
@@ -127,6 +138,7 @@ pub fn source(state: &SubscriptionState, own_name: &str) -> Option<Source> {
                 name => name.to_owned(),
             },
             channel: tx.channel_name().to_owned(),
+            names: Vec::new(),
         }),
         SubscriptionState::Unsubscribed => None,
     }
@@ -152,18 +164,33 @@ impl DanteStatus {
                 let _ = writeln!(out, "  error: {error}");
             }
             for tx in &device.transmitters {
-                let _ = writeln!(out, "  tx {:>3}  {}", tx.channel, tx.name);
+                let _ = writeln!(
+                    out,
+                    "  tx {:>3}  {}{}",
+                    tx.channel,
+                    tx.name,
+                    tags(&tx.names)
+                );
             }
+            let label =
+                |rx: &Receiver| format!("{}{}", rx.name.as_deref().unwrap_or(""), tags(&rx.names));
             let width = device
                 .receivers
                 .iter()
-                .filter_map(|rx| rx.name.as_ref().map(String::len))
+                .map(|rx| label(rx).len())
                 .max()
                 .unwrap_or(0);
             for rx in &device.receivers {
-                let name = rx.name.as_deref().unwrap_or("");
+                let name = label(rx);
                 let source = match &rx.source {
-                    Some(source) => format!("{}@{}", source.channel, source.device),
+                    Some(source) => {
+                        format!(
+                            "{}@{}{}",
+                            source.channel,
+                            source.device,
+                            tags(&source.names)
+                        )
+                    }
                     None => "-".to_owned(),
                 };
                 let _ = writeln!(out, "  rx {:>3}  {name:<width$}  <- {source}", rx.channel);
@@ -171,5 +198,14 @@ impl DanteStatus {
             out.push('\n');
         }
         out
+    }
+}
+
+/// Renders names as `  [a, b]`, or nothing.
+pub fn tags(names: &[String]) -> String {
+    if names.is_empty() {
+        String::new()
+    } else {
+        format!("  [{}]", names.join(", "))
     }
 }

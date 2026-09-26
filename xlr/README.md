@@ -41,4 +41,31 @@ automatically; override it with `--interface` or `XLR_INTERFACE`. When any
 device cannot be read, `xlr` still prints everything it could, marks the
 failure in that device's `error` field, and exits nonzero.
 
+## Names
+
+Give things your own names in `~/.config/xlr/xlr.toml` (or `$XLR_CONFIG`):
+
+```toml
+# Short names for devices, used inside addresses.
+[devices]
+scarlett = "focusrite/<serial>"
+stage-box = "dante/<dante device name>"
+
+# Your names for the things you use.
+[names]
+guitar = "focusrite/scarlett/input/1"
+desktop-left = "dante/stage-box/rx/Left"
+mic-3 = "dante/foh-rack/tx/Mic 3"
+```
+
+Every command accepts names, `xlr status` shows them next to the hardware
+they refer to, and `xlr names` checks each one against what is actually
+connected (`found`, `missing`, or `unverified` when its device can't be
+read), exiting nonzero if any are missing.
+
+Addresses: `dante/<device>/rx/<channel or number>`,
+`dante/<device>/tx/<channel>`, `focusrite/<device>/input/<n>`, and
+`focusrite/<device>/monitor`. A Focusrite device is identified by its serial
+number (shown in `xlr status --json` as `id`).
+
 Built by [SaavyLab](https://github.com/saavylab).
