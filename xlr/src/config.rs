@@ -110,10 +110,19 @@ fn path() -> Option<PathBuf> {
     if let Some(path) = env::var_os("XLR_CONFIG") {
         return Some(PathBuf::from(path));
     }
+    Some(home()?.join("xlr.toml"))
+}
+
+/// This machine's xlr directory: `$XLR_HOME`, or `~/.config/xlr`. It holds
+/// `xlr.toml`, the identity, known hosts, and approved peers.
+pub fn home() -> Option<PathBuf> {
+    if let Some(home) = env::var_os("XLR_HOME") {
+        return Some(PathBuf::from(home));
+    }
     let base = env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
         .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
-    Some(base.join("xlr").join("xlr.toml"))
+    Some(base.join("xlr"))
 }
 
 #[cfg(test)]

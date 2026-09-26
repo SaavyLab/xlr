@@ -133,8 +133,8 @@ issuing a sequence of imperative commands.
 1. ~~Names: per-host configuration mapping names to addresses; `status` and
    `route` speak names.~~ Done.
 2. ~~PipeWire read backend.~~ Done.
-3. `xlr serve` with key-pinned trust and pairing; multi-host `status`,
-   read-only.
+3. ~~`xlr serve` with key-pinned trust and pairing; multi-host `status`,
+   read-only.~~ Done.
 4. Remote control role; snapshot, apply, and undo; host-enforced guardrails.
 5. Trace, meters, and `xlr agent-guide`.
 

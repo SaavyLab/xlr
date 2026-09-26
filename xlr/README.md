@@ -41,6 +41,34 @@ automatically; override it with `--interface` or `XLR_INTERFACE`. When any
 device cannot be read, `xlr` still prints everything it could, marks the
 failure in that device's `error` field, and exits nonzero.
 
+## Multiple machines
+
+Run `xlr serve` on each machine with audio hardware, then pair the machines
+you control from:
+
+```bash
+# on the machine with the hardware (e.g. mac-mini)
+xlr serve                      # listens on 0.0.0.0:7373
+xlr id                         # shows its fingerprint
+
+# on the machine you control from
+xlr hosts add mac-mini 192.168.1.20 --fingerprint <fingerprint from xlr id>
+
+# back on mac-mini: check the code matches, then approve
+xlr peers                      # shows the pending request and its code
+xlr peers approve 954466
+```
+
+After that, `xlr status` shows the whole studio: Dante once, and each host's
+Focusrite and PipeWire state under that host, each labelled with the names
+from that host's own config. `xlr status --local` reads only this machine.
+
+Each machine has its own key pair (in `~/.config/xlr/identity/`, or
+`$XLR_HOME`). Connections use TLS 1.3 with both sides pinning the other's
+certificate fingerprint; there is no certificate authority, and addresses
+never grant anything. Approved peers and their roles live in
+`~/.config/xlr/peers.toml`; revoke one with `xlr peers remove`.
+
 ## Names
 
 Give things your own names in `~/.config/xlr/xlr.toml` (or `$XLR_CONFIG`):

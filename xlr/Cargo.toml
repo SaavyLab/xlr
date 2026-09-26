@@ -23,3 +23,6 @@ toml = "1.1.6"
 xlr-dante = { version = "0.1.0", path = "../xlr-dante" }
 xlr-focusrite = { version = "0.1.0", path = "../xlr-focusrite" }
 xlr-pipewire = { version = "0.1.0", path = "../xlr-pipewire" }
+rcgen = { version = "0.14.5", default-features = false, features = ["crypto", "pem", "ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+sha2 = "0.10.9"

@@ -1,19 +1,20 @@
 //! Dante backend: discovery plus a full read of every device.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{fmt::Write as _, net::Ipv4Addr, time::Duration};
 use xlr_dante::{
     ArcClient, DeviceBrowser, DiscoveredDevice,
     model::{ReceiverSubscription, SubscriptionState},
 };
 
+#[derive(Clone, Copy)]
 pub struct Options {
     pub interface: Ipv4Addr,
     pub discovery: Duration,
     pub timeout: Duration,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct DanteStatus {
     pub interface: Ipv4Addr,
     pub devices: Vec<Device>,
@@ -21,7 +22,7 @@ pub struct DanteStatus {
     pub error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Device {
     pub name: String,
     pub product: Option<String>,
@@ -34,32 +35,32 @@ pub struct Device {
     pub error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Transmitter {
     pub channel: u16,
     pub name: String,
     /// Your names for this channel.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Receiver {
     pub channel: u16,
     pub name: Option<String>,
     /// The transmitter this receiver is subscribed to, or `null`.
     pub source: Option<Source>,
     /// Your names for this receiver.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 pub struct Source {
     pub device: String,
     pub channel: String,
     /// Your names for the source channel.
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
 }
 

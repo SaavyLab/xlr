@@ -1,11 +1,11 @@
 //! PipeWire backend: the desktop audio graph, read-only.
 
 use crate::dante::tags;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::fmt::Write as _;
 use xlr_pipewire::{Direction, PipewireError};
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct PipewireStatus {
     pub outputs: Vec<Endpoint>,
     pub inputs: Vec<Endpoint>,
@@ -16,7 +16,7 @@ pub struct PipewireStatus {
     pub error: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Endpoint {
     /// The stable node name, used in `pipewire/sink/<node>` addresses.
     pub node: String,
@@ -26,7 +26,7 @@ pub struct Endpoint {
     pub default: bool,
     /// Applications playing to (outputs) or recording from (inputs) it.
     pub streams: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
 }
 

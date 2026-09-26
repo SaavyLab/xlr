@@ -7,13 +7,23 @@ mod address;
 mod config;
 mod dante;
 mod focusrite;
+mod identity;
 mod network;
+mod pairing;
 mod pipewire;
+mod remote;
 mod route;
 mod setup;
+mod studio;
+mod tls;
+mod trust;
 
 use clap::{Parser, Subcommand};
-use std::{net::Ipv4Addr, process::ExitCode, time::Duration};
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    process::ExitCode,
+    time::Duration,
+};
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -44,7 +54,34 @@ enum Command {
     /// Show the whole setup: Dante devices and routes, Focusrite
     /// interfaces on USB, and this host's PipeWire graph, labelled with
     /// your names.
-    Status,
+    Status {
+        /// Read only this machine, not the hosts in `xlr hosts`.
+        #[arg(long)]
+        local: bool,
+    },
+    /// Serve this host's hardware to paired machines.
+    ///
+    /// Other machines add this one with `xlr hosts add`, then you approve
+    /// them here with `xlr peers approve`.
+    Serve {
+        /// Address and port to listen on.
+        #[arg(long, default_value = "0.0.0.0:7373")]
+        listen: SocketAddr,
+    },
+    /// Print this machine's name and identity fingerprint.
+    Id,
+    /// Hosts this machine reads from. Lists them, with pairing state, when
+    /// given no subcommand.
+    Hosts {
+        #[command(subcommand)]
+        command: Option<HostsCommand>,
+    },
+    /// Machines allowed to read this host. Lists approved and pending peers
+    /// when given no subcommand.
+    Peers {
+        #[command(subcommand)]
+        command: Option<PeersCommand>,
+    },
     /// List your names and check each against live hardware.
     ///
     /// Names are defined in `$XLR_CONFIG` or `~/.config/xlr/xlr.toml`:
@@ -83,6 +120,45 @@ enum Command {
 }
 
 #[derive(Subcommand)]
+enum HostsCommand {
+    /// Pin a host's identity and ask it to pair.
+    Add {
+        /// Your name for the host, e.g. `mac-mini`.
+        name: String,
+        /// Its address, e.g. `192.168.1.20` or `mac-mini.local:7373`.
+        address: String,
+        /// Expected fingerprint (from `xlr id` on that host). Without it, the
+        /// first fingerprint seen is pinned and the pairing code confirms it.
+        #[arg(long)]
+        fingerprint: Option<String>,
+    },
+    /// Forget a host.
+    Remove { name: String },
+}
+
+#[derive(Subcommand)]
+enum PeersCommand {
+    /// Approve a pending pairing request by its code or fingerprint.
+    Approve {
+        /// The six-digit code, or a fingerprint prefix of 8+ digits.
+        selector: String,
+        /// What the peer may do.
+        #[arg(long, value_enum, default_value_t = RoleArg::Read)]
+        role: RoleArg,
+    },
+    /// Revoke an approved peer by name or fingerprint prefix.
+    Remove { selector: String },
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum RoleArg {
+    /// Status and other reads.
+    Read,
+    /// Reads plus changes.
+    Control,
+}
+
+#[derive(Subcommand)]
 enum FocusriteCommand {
     /// List connected Focusrite devices without opening them.
     Identify,
@@ -106,6 +182,10 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
     if let Command::Focusrite(command) = &cli.command {
         return run_focusrite(cli, command);
     }
+    if let Some(message) = run_pairing(&cli.command)? {
+        println!("{message}");
+        return Ok(ExitCode::SUCCESS);
+    }
     let config = config::Config::load()?;
     let interface = match cli.interface {
         Some(interface) => interface,
@@ -117,8 +197,9 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
         timeout: Duration::from_millis(cli.timeout_ms),
     };
     match cli.command {
-        Command::Status => {
-            let status = setup::read(&options, &config);
+        Command::Status { local } => {
+            let home = if local { None } else { config::home() };
+            let status = studio::read(|| setup::read(&options, &config), home.as_deref());
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&status)?);
             } else {
@@ -161,7 +242,26 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 ExitCode::SUCCESS
             })
         }
-        Command::Focusrite(_) => unreachable!("handled above"),
+        Command::Serve { listen } => {
+            let home = remote::home()?;
+            let identity = identity::Identity::load_or_create(&home)?;
+            remote::serve(
+                listen,
+                remote::Server {
+                    home,
+                    identity,
+                    status: Box::new(move || {
+                        let config = config::Config::load()?;
+                        serde_json::to_value(setup::read(&options, &config))
+                            .map_err(|error| error.to_string())
+                    }),
+                },
+            )?;
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Focusrite(_) | Command::Id | Command::Hosts { .. } | Command::Peers { .. } => {
+            unreachable!("handled above")
+        }
         Command::Route {
             ref receiver,
             ref source,
@@ -211,4 +311,34 @@ fn run_focusrite(
             })
         }
     }
+}
+
+/// Runs identity and pairing commands, which need no network options.
+fn run_pairing(command: &Command) -> Result<Option<String>, String> {
+    let home = || remote::home();
+    Ok(Some(match command {
+        Command::Id => pairing::id(&home()?)?,
+        Command::Hosts { command } => match command {
+            None => pairing::list_hosts(&home()?)?,
+            Some(HostsCommand::Add {
+                name,
+                address,
+                fingerprint,
+            }) => pairing::add_host(&home()?, name, address, fingerprint.as_deref())?,
+            Some(HostsCommand::Remove { name }) => pairing::remove_host(&home()?, name)?,
+        },
+        Command::Peers { command } => match command {
+            None => pairing::list_peers(&home()?)?,
+            Some(PeersCommand::Approve { selector, role }) => pairing::approve(
+                &home()?,
+                selector,
+                match role {
+                    RoleArg::Read => trust::Role::Read,
+                    RoleArg::Control => trust::Role::Control,
+                },
+            )?,
+            Some(PeersCommand::Remove { selector }) => pairing::remove_peer(&home()?, selector)?,
+        },
+        _ => return Ok(None),
+    }))
 }

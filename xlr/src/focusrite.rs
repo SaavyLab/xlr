@@ -1,22 +1,22 @@
 //! Focusrite backend: USB identification and read-only settings.
 
 use crate::dante::tags;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{fmt::Write as _, time::Duration};
 use xlr_focusrite::usb::{FoundDevice, Session, UsbError, find_devices};
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Identity {
     /// The device segment of this device's addresses: its serial number.
     pub id: String,
     pub product: Option<String>,
-    pub model: Option<&'static str>,
+    pub model: Option<String>,
     pub product_id: String,
     pub serial: Option<String>,
     pub supported: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Status {
     #[serde(flatten)]
     pub identity: Identity,
@@ -31,7 +31,7 @@ pub struct Status {
 }
 
 /// Every Focusrite device on this machine.
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct FocusriteStatus {
     pub devices: Vec<Status>,
     /// Why USB enumeration itself failed, if it did.
@@ -51,21 +51,21 @@ impl FocusriteStatus {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Monitor {
     pub mute: bool,
     pub dim: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct PhantomGroup {
     pub inputs: String,
     pub on: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Input {
     pub input: u8,
     pub phantom: bool,
@@ -75,7 +75,7 @@ pub struct Input {
     /// software switch.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub instrument: Option<bool>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub names: Vec<String>,
 }
 
@@ -83,7 +83,7 @@ fn identity(device: &FoundDevice) -> Identity {
     Identity {
         id: device_id(device),
         product: device.product().map(str::to_owned),
-        model: device.model().map(|model| model.name()),
+        model: device.model().map(|model| model.name().to_owned()),
         product_id: format!("0x{:04x}", device.product_id()),
         serial: device.serial_number().map(str::to_owned),
         supported: device.model().is_some(),
@@ -173,7 +173,7 @@ pub fn render_identities(identities: &[Identity]) -> String {
             out,
             "{}  ({}, {}, serial {}){}",
             device.product.as_deref().unwrap_or("Focusrite device"),
-            device.model.unwrap_or("unsupported model"),
+            device.model.as_deref().unwrap_or("unsupported model"),
             device.product_id,
             device.serial.as_deref().unwrap_or("?"),
             if device.supported {
@@ -201,7 +201,11 @@ pub fn render_statuses(statuses: &[Status]) -> String {
                 .product
                 .as_deref()
                 .unwrap_or("Focusrite device"),
-            device.identity.model.unwrap_or("unsupported model"),
+            device
+                .identity
+                .model
+                .as_deref()
+                .unwrap_or("unsupported model"),
             device
                 .firmware
                 .map_or_else(|| "?".to_owned(), |firmware| firmware.to_string()),

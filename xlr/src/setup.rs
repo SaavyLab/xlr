@@ -7,10 +7,10 @@ use crate::{
     focusrite::{self, FocusriteStatus},
     pipewire::{self, PipewireStatus},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Setup {
     pub dante: DanteStatus,
     pub focusrite: FocusriteStatus,
@@ -28,19 +28,6 @@ pub fn read(options: &dante::Options, config: &Config) -> Setup {
 }
 
 impl Setup {
-    pub fn has_errors(&self) -> bool {
-        self.dante.has_errors() || self.focusrite.has_errors() || self.pipewire.has_errors()
-    }
-
-    pub fn render(&self) -> String {
-        format!(
-            "── Dante ──\n{}── Focusrite (USB) ──\n{}\n── PipeWire ──\n{}",
-            self.dante.render(),
-            self.focusrite.render(),
-            self.pipewire.render()
-        )
-    }
-
     /// Attaches your names to everything they refer to.
     fn annotate(&mut self, config: &Config) {
         for output in &mut self.pipewire.outputs {
