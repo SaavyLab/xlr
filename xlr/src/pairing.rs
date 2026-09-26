@@ -58,7 +58,7 @@ pub fn list_hosts(home: &Path) -> Result<String, String> {
 /// One-way: this machine reads the host.
 pub fn add_host(
     home: &Path,
-    name: &str,
+    name: Option<&str>,
     address: &str,
     fingerprint: Option<&str>,
 ) -> Result<String, String> {
@@ -69,7 +69,7 @@ pub fn add_host(
 /// reads this machine, with the host granted `grant` here.
 pub fn pair(
     home: &Path,
-    name: &str,
+    name: Option<&str>,
     address: &str,
     fingerprint: Option<&str>,
     port: u16,
@@ -80,17 +80,12 @@ pub fn pair(
 
 fn connect(
     home: &Path,
-    name: &str,
+    name: Option<&str>,
     address: &str,
     fingerprint: Option<&str>,
     mutual: Option<(u16, Role)>,
 ) -> Result<String, String> {
     let mut hosts = Hosts::load(home)?;
-    if hosts.hosts.contains_key(name) {
-        return Err(format!(
-            "host `{name}` already exists; remove it first with `xlr hosts remove {name}`"
-        ));
-    }
     let identity = Identity::load_or_create(home)?;
     let pinned = fingerprint.map(Fingerprint::parse).transpose()?;
     let address = remote::with_default_port(address);
@@ -103,6 +98,18 @@ fn connect(
             serve_port: mutual.map(|(port, _)| port),
         },
     )?;
+    // The host's own name, unless the caller chose an alias.
+    let name = match (name, response.host.as_deref()) {
+        (Some(alias), _) => alias.to_owned(),
+        (None, Some(announced)) => announced.to_owned(),
+        (None, None) => return Err("the host did not announce a name; pass --as <name>".to_owned()),
+    };
+    let name = name.as_str();
+    if hosts.hosts.contains_key(name) {
+        return Err(format!(
+            "host `{name}` already exists; remove it first with `xlr hosts remove {name}`"
+        ));
+    }
 
     // Verify before trusting anything: nothing is saved until the host's
     // pairing code matches the one computed here.
@@ -290,7 +297,7 @@ mod tests {
 
         let message = (0..50)
             .find_map(
-                |_| match pair(&client_home, "studio", &address, None, 9999, Role::Read) {
+                |_| match pair(&client_home, None, &address, None, 9999, Role::Read) {
                     Err(error) if error.contains("refused") => {
                         thread::sleep(Duration::from_millis(20));
                         None
@@ -301,6 +308,13 @@ mod tests {
             .expect("server started")
             .unwrap();
         assert!(message.contains("xlr peers approve"), "{message}");
+        // Named after what the host announced, since no alias was given.
+        let client_hosts = Hosts::load(&client_home).unwrap();
+        assert_eq!(client_hosts.hosts.len(), 1);
+        assert_eq!(
+            client_hosts.hosts.keys().next().map(String::as_str),
+            Some(crate::config::host_name().as_str())
+        );
 
         // Before approval: the client already trusts the host, not vice versa.
         let client_peers = Peers::load(&client_home).unwrap();

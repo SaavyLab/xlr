@@ -41,6 +41,9 @@ pub enum Request {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Response {
+    /// The answering host's own name (`[host] name`), on every response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub result: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,6 +63,7 @@ pub struct RemoteError {
 impl Response {
     fn ok(result: Value) -> Self {
         Self {
+            host: None,
             result: Some(result),
             error: None,
         }
@@ -67,6 +71,7 @@ impl Response {
 
     fn error(kind: &str, message: impl Into<String>, code: Option<String>) -> Self {
         Self {
+            host: None,
             result: None,
             error: Some(RemoteError {
                 kind: kind.to_owned(),
@@ -206,10 +211,11 @@ fn handle(
     BufReader::new(Read::by_ref(&mut stream).take(MAX_REQUEST))
         .read_line(&mut line)
         .map_err(|error| error.to_string())?;
-    let response = match serde_json::from_str::<Request>(&line) {
+    let mut response = match serde_json::from_str::<Request>(&line) {
         Err(error) => Response::error("bad-request", error.to_string(), None),
         Ok(request) => respond(&request, &client, peer_ip, server, hardware, peers_file),
     };
+    response.host = Some(hostname());
     eprintln!(
         "xlr serve: {} {} -> {}",
         client.short(),
@@ -282,15 +288,9 @@ fn respond(
     }
 }
 
-/// This machine's name as other hosts will see it in pairing requests.
+/// This machine's name as other hosts will see it.
 pub fn hostname() -> String {
-    std::process::Command::new("hostname")
-        .output()
-        .ok()
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|name| name.trim().trim_end_matches(".local").to_owned())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| "this host".to_owned())
+    crate::config::host_name()
 }
 
 /// The xlr home, or an error explaining how to set one.

@@ -4,6 +4,7 @@
 //! # Dante devices attached to this host, such as a USB Dante adapter.
 //! # (Dante Via running on this host is recognised automatically.)
 //! [host]
+//! name = "mac-mini"          # how other machines show this one
 //! owns = ["dante/avio"]
 //!
 //! # Short names for devices, used in addresses.
@@ -27,6 +28,10 @@ use std::{
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct HostSection {
+    /// This host's name, as other machines will show it. Defaults to the
+    /// hostname, lowercased, without `.local`.
+    #[serde(default)]
+    name: Option<String>,
     /// Dante devices attached to this host (for example a USB Dante adapter),
     /// as `dante/<device or alias>`.
     #[serde(default)]
@@ -54,6 +59,8 @@ pub struct Config {
     pub names: BTreeMap<String, Address>,
     /// Dante device names this host owns, from `[host] owns`.
     pub owned_dante: Vec<String>,
+    /// From `[host] name`.
+    pub host_name: Option<String>,
 }
 
 impl Config {
@@ -93,7 +100,16 @@ impl Config {
             devices,
             names: BTreeMap::new(),
             owned_dante: Vec::new(),
+            host_name: None,
         };
+        if let Some(name) = &file.host.name {
+            if name.is_empty() || name.contains(['/', '@']) || name.contains(char::is_whitespace) {
+                return Err(format!(
+                    "[host] name `{name}` must be one word without `/` or `@`"
+                ));
+            }
+            config.host_name = Some(name.clone());
+        }
         for owned in &file.host.owns {
             let device = owned
                 .strip_prefix("dante/")
@@ -142,6 +158,25 @@ fn path() -> Option<PathBuf> {
         return Some(PathBuf::from(path));
     }
     Some(home()?.join("xlr.toml"))
+}
+
+/// This host's name: `[host] name` from its configuration, or else its
+/// hostname, lowercased and without `.local`.
+pub fn host_name() -> String {
+    Config::load()
+        .ok()
+        .and_then(|config| config.host_name)
+        .unwrap_or_else(default_host_name)
+}
+
+fn default_host_name() -> String {
+    std::process::Command::new("hostname")
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|name| name.trim().trim_end_matches(".local").to_ascii_lowercase())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "this-host".to_owned())
 }
 
 /// This machine's xlr directory: `$XLR_HOME`, or `~/.config/xlr`. It holds
@@ -204,6 +239,18 @@ mod tests {
         .unwrap();
         assert_eq!(config.owned_dante, ["AVIO-1", "Other-1"]);
         assert!(Config::parse("[host]\nowns = [\"focusrite/x\"]").is_err());
+    }
+
+    #[test]
+    fn host_names_are_single_words() {
+        let config = Config::parse("[host]\nname = \"mac-mini\"").unwrap();
+        assert_eq!(config.host_name.as_deref(), Some("mac-mini"));
+        for bad in ["\"\"", "\"a b\"", "\"a/b\""] {
+            assert!(
+                Config::parse(&format!("[host]\nname = {bad}")).is_err(),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

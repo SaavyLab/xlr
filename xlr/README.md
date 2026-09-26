@@ -52,12 +52,15 @@ xlr serve                      # listens on 0.0.0.0:7373
 xlr id                         # shows its fingerprint
 
 # on the machine you control from (also running `xlr serve`)
-xlr pair mac-mini 192.168.1.20 --fingerprint <fingerprint from xlr id>
+xlr pair 192.168.1.20 --fingerprint <fingerprint from xlr id>
 
 # back on mac-mini: check the code matches, then approve
 xlr peers                      # shows the pending request and its code
 xlr peers approve 954466       # pairs both ways: each machine now reads the other
 ```
+
+Hosts are shown by the name they give themselves (`[host] name` in their
+`xlr.toml`, or their hostname), on every machine; `--as` sets a local alias.
 
 For a machine that only reads (a laptop, say), use `xlr hosts add` instead of
 `xlr pair`: same ceremony, one direction. The host adds the pairing machine

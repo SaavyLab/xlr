@@ -74,10 +74,11 @@ enum Command {
     /// pair. Approving on the host (`xlr peers approve <code>`) also adds this
     /// machine there as a host. Both machines should run `xlr serve`.
     Pair {
-        /// Your name for the host, e.g. `mac-mini`.
-        name: String,
         /// Its address, e.g. `192.168.1.20`.
         address: String,
+        /// A local alias; by default the host's own name (its `[host] name`).
+        #[arg(long = "as")]
+        alias: Option<String>,
         /// Expected fingerprint (from `xlr id` on that host).
         #[arg(long)]
         fingerprint: Option<String>,
@@ -143,10 +144,11 @@ enum Command {
 enum HostsCommand {
     /// Pin a host's identity and ask it to pair.
     Add {
-        /// Your name for the host, e.g. `mac-mini`.
-        name: String,
         /// Its address, e.g. `192.168.1.20` or `mac-mini.local:7373`.
         address: String,
+        /// A local alias; by default the host's own name (its `[host] name`).
+        #[arg(long = "as")]
+        alias: Option<String>,
         /// Expected fingerprint (from `xlr id` on that host). Without it, the
         /// first fingerprint seen is pinned and the pairing code confirms it.
         #[arg(long)]
@@ -343,14 +345,14 @@ fn run_pairing(command: &Command) -> Result<Option<String>, String> {
     Ok(Some(match command {
         Command::Id => pairing::id(&home()?)?,
         Command::Pair {
-            name,
             address,
+            alias,
             fingerprint,
             port,
             grant,
         } => pairing::pair(
             &home()?,
-            name,
+            alias.as_deref(),
             address,
             fingerprint.as_deref(),
             *port,
@@ -359,10 +361,10 @@ fn run_pairing(command: &Command) -> Result<Option<String>, String> {
         Command::Hosts { command } => match command {
             None => pairing::list_hosts(&home()?)?,
             Some(HostsCommand::Add {
-                name,
                 address,
+                alias,
                 fingerprint,
-            }) => pairing::add_host(&home()?, name, address, fingerprint.as_deref())?,
+            }) => pairing::add_host(&home()?, alias.as_deref(), address, fingerprint.as_deref())?,
             Some(HostsCommand::Remove { name }) => pairing::remove_host(&home()?, name)?,
         },
         Command::Peers { command } => match command {
