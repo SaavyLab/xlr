@@ -53,7 +53,14 @@
         name = "xlr-package";
         runtimeInputs = cargoInputs;
         text = ''
-          cargo package --workspace --allow-dirty
+          # Cargo treats a packaged crate version as immutable: it extracts its
+          # source into the registry cache once and reuses builds of it, so a
+          # changed but unbumped crate would verify against stale code. Verify
+          # from a clean extraction in a throwaway target directory instead.
+          rm -rf "''${CARGO_HOME:-$HOME/.cargo}"/registry/src/*/xlr-dante-*
+          verify_dir="$(mktemp -d)"
+          trap 'rm -rf "$verify_dir"' EXIT
+          CARGO_TARGET_DIR="$verify_dir" cargo package --workspace --allow-dirty
         '';
       };
       ci = pkgs.writeShellApplication {

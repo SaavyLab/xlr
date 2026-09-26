@@ -11,9 +11,12 @@
 //!
 //! Every ARC frame starts with the same four big-endian words: magic,
 //! declared length, sequence, and command. Replies echo the request's
-//! sequence and command.
+//! sequence and command. The magic encodes an ARC protocol version, as
+//! devices advertise it in their `arcp_vers` TXT record: `0x280F` is 2.8.15
+//! (Dante Via), `0x2809` is 2.8.9 (observed on an AVIO adapter).
 
 pub mod device;
+pub mod page_write;
 pub mod subscription;
 pub mod subscription_write;
 pub mod transmitters;
@@ -25,8 +28,8 @@ use std::ops::Range;
 pub(crate) const REQUEST_MAGIC: u16 = 0x280F;
 /// Reply magic observed for the paged channel listings (`0x2000`, `0x3000`).
 pub(crate) const LISTING_REPLY_MAGIC: u16 = 0x2801;
-/// Reply magic some devices use for other commands (observed on a
-/// physical Dante adapter for `0x1000` and `0x1002`).
+/// Protocol 2.8.9, which an AVIO adapter uses in its replies to `0x1000`
+/// and `0x1002` (Via answers those with its own version, `0x280F`).
 pub(crate) const ALTERNATE_REPLY_MAGIC: u16 = 0x2809;
 /// The status word value observed on every successful reply that carries
 /// one.

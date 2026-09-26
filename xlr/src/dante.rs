@@ -51,7 +51,7 @@ pub struct Receiver {
     pub source: Option<Source>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct Source {
     pub device: String,
     pub channel: String,
@@ -112,16 +112,21 @@ fn receiver(entry: &ReceiverSubscription, own_name: &str) -> Receiver {
     Receiver {
         channel: entry.receiver_channel().value(),
         name: entry.name().map(str::to_owned),
-        source: match entry.state() {
-            SubscriptionState::Subscribed(tx) => Some(Source {
-                device: match tx.device_name() {
-                    "." => own_name.to_owned(),
-                    name => name.to_owned(),
-                },
-                channel: tx.channel_name().to_owned(),
-            }),
-            SubscriptionState::Unsubscribed => None,
-        },
+        source: source(entry.state(), own_name),
+    }
+}
+
+/// The normalized source of a subscription state, resolving Via's `.`.
+pub fn source(state: &SubscriptionState, own_name: &str) -> Option<Source> {
+    match state {
+        SubscriptionState::Subscribed(tx) => Some(Source {
+            device: match tx.device_name() {
+                "." => own_name.to_owned(),
+                name => name.to_owned(),
+            },
+            channel: tx.channel_name().to_owned(),
+        }),
+        SubscriptionState::Unsubscribed => None,
     }
 }
 

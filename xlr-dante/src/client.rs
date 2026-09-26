@@ -20,6 +20,7 @@ use crate::{
     arc::{
         correlates,
         device::{ChannelCountQuery, DeviceNameQuery},
+        page_write::PageSubscriptionWrite,
         subscription::{ReceiverPageQuery, SubscriptionQuery},
         subscription_write::{
             SubscriptionAcceptance, SubscriptionAcceptanceError, SubscriptionWriteCodecError,
@@ -295,8 +296,42 @@ impl ArcClient {
         let request = SubscriptionWriteRequest::new(sequence, receiver_channel, selector)
             .map_err(ArcClientError::WriteCodec)?;
         let encoded = request.encode().map_err(ArcClientError::WriteCodec)?;
-        self.send(&encoded)?;
+        self.write_once(&encoded, |frame| request.parse_acceptance(frame))
+    }
 
+    /// Like [`Self::apply_subscription`], but in the paged `0x3410` form that
+    /// Dante hardware uses (see [`crate::arc::page_write`]).
+    ///
+    /// `protocol` is the device's ARC protocol version
+    /// ([`crate::DiscoveredDevice::arc_protocol`]) and `page_capacity` is
+    /// `min(32, receiver channel count)`.
+    pub fn apply_paged_subscription(
+        &mut self,
+        protocol: u16,
+        page_capacity: u8,
+        receiver_channel: ReceiverChannel,
+        selector: Option<&TransmitterSelector>,
+    ) -> Result<SubscriptionAcceptance, ArcClientError> {
+        let sequence = self.allocate_sequence()?;
+        let request = PageSubscriptionWrite::new(
+            protocol,
+            page_capacity,
+            sequence,
+            receiver_channel,
+            selector,
+        )
+        .map_err(ArcClientError::WriteCodec)?;
+        let encoded = request.encode().map_err(ArcClientError::WriteCodec)?;
+        self.write_once(&encoded, |frame| request.parse_acceptance(frame))
+    }
+
+    /// Sends one write and parses exactly one reply from the fixed peer.
+    fn write_once(
+        &mut self,
+        encoded: &[u8],
+        parse: impl FnOnce(&[u8]) -> Result<SubscriptionAcceptance, SubscriptionAcceptanceError>,
+    ) -> Result<SubscriptionAcceptance, ArcClientError> {
+        self.send(encoded)?;
         let receive_started = Instant::now();
         let (received, source) = self.receive_one_from(receive_started)?;
         if source != self.peer_address {
@@ -305,9 +340,7 @@ impl ArcClient {
                 received: source,
             });
         }
-        request
-            .parse_acceptance(&self.receive_buffer[..received])
-            .map_err(ArcClientError::Acceptance)
+        parse(&self.receive_buffer[..received]).map_err(ArcClientError::Acceptance)
     }
 
     /// Allocates a sequence, lets `build` encode the request and produce its

@@ -20,7 +20,7 @@ xlr-dante = "0.1"
 | Device name and channel counts | ARC over UDP | `ArcClient::device_name`, `ArcClient::channel_counts` |
 | List transmitter channels | ARC over UDP | `ArcClient::transmitter_channels` |
 | Read receiver subscriptions | ARC over UDP | `ArcClient::receiver_subscriptions`, `ArcClient::query_subscription` |
-| Set or clear a subscription | ARC over UDP | `ArcClient::apply_subscription` |
+| Set or clear a subscription | ARC over UDP | `ArcClient::apply_subscription`, `ArcClient::apply_paged_subscription` |
 | Resolve one transmitter channel (`channel@device`) | mDNS `_netaudio-chan._udp` | `ChannelServiceClient::query` |
 
 Every ARC operation also exists as a pure codec (`xlr_dante::arc`) that turns
@@ -127,15 +127,23 @@ implements message forms observed from real devices on a small test network
 synthetic fixtures. Other devices and firmware versions may use variants
 that this crate will reject instead of misreading.
 
-- Discovery, device info, channel listings, and subscription reads work on
-  both observed devices.
-- **Subscription writes implement the Dante Via form only.** Dante hardware
-  such as the AVIO adapters was observed using a different write form that
-  this crate does not implement yet.
+- Discovery, device info, channel listings, subscription reads, and
+  subscription writes all work on both observed devices.
+- There are two write forms. `ArcClient::apply_subscription` sends the Dante
+  Via form (ARC protocol 2.8.15); `ArcClient::apply_paged_subscription` sends
+  the paged form Dante hardware uses (verified on ARC protocol 2.8.9). Pick by
+  `DiscoveredDevice::arc_protocol`; other versions are refused.
 - Dante Via reports `.` as the device name for a subscription to one of its
   own channels.
 
 Reports and captures of new variants are welcome.
+
+## Acknowledgements
+
+[NetAudio](https://github.com/chris-ritsen/network-audio-controller)
+(public domain) was a reference for the paged subscription write and for
+reading the ARC protocol version from `arcp_vers`; both were then verified
+against the devices above.
 
 ## Trademarks
 

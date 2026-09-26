@@ -85,6 +85,21 @@ impl DiscoveredDevice {
         self.txt_value("mf")
     }
 
+    /// The ARC protocol version from TXT `arcp_vers`, encoded as the wire
+    /// magic: `2.8.9` is `0x2809`, `2.8.15` is `0x280F`.
+    pub fn arc_protocol(&self) -> Option<u16> {
+        let mut parts = self.txt_value("arcp_vers")?.split('.');
+        let mut part = |bits: u32| -> Option<u16> {
+            let value: u16 = parts.next()?.parse().ok()?;
+            (u32::from(value) < (1 << bits)).then_some(value)
+        };
+        let (major, minor, patch) = (part(4)?, part(4)?, part(8)?);
+        parts
+            .next()
+            .is_none()
+            .then_some((major << 12) | (minor << 8) | patch)
+    }
+
     /// The advertised product description (TXT `router_info`), e.g.
     /// `Dante Via`.
     pub fn product(&self) -> Option<&str> {
@@ -445,6 +460,22 @@ mod tests {
         assert_eq!(device.model(), Some("DIOUSBC"));
         assert_eq!(device.manufacturer(), Some("Audinate"));
         assert_eq!(device.product(), Some("DIOUSB"));
+    }
+
+    #[test]
+    fn arc_protocol_parses_advertised_versions() {
+        let device = |version: &str| DiscoveredDevice {
+            name: "d".to_owned(),
+            host: "d.local".to_owned(),
+            arc_port: 4440,
+            addresses: vec![IpAddr::V4(Ipv4Addr::LOCALHOST)],
+            txt: vec![("arcp_vers".to_owned(), version.to_owned())],
+        };
+        assert_eq!(device("2.8.9").arc_protocol(), Some(0x2809));
+        assert_eq!(device("2.8.15").arc_protocol(), Some(0x280F));
+        for invalid in ["2.8", "2.8.9.1", "16.0.0", "2.x.9", "2.8.256"] {
+            assert_eq!(device(invalid).arc_protocol(), None, "{invalid}");
+        }
     }
 
     #[test]

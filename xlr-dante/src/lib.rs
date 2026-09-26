@@ -12,7 +12,7 @@
 //! | Device name, channel counts | ARC `0x1002`, `0x1000` | [`ArcClient::device_name`], [`ArcClient::channel_counts`] |
 //! | List transmitter channels | ARC `0x2000` | [`ArcClient::transmitter_channels`] |
 //! | Read receiver subscriptions | ARC `0x3000` | [`ArcClient::receiver_subscriptions`], [`ArcClient::query_subscription`] |
-//! | Set or clear a subscription | ARC `0x3010` (Dante Via form) | [`ArcClient::apply_subscription`] |
+//! | Set or clear a subscription | ARC `0x3010` (Dante Via), `0x3410` (hardware) | [`ArcClient::apply_subscription`], [`ArcClient::apply_paged_subscription`] |
 //! | Resolve one transmitter channel | mDNS `_netaudio-chan._udp` | [`ChannelServiceClient::query`] |
 //!
 //! # Layering

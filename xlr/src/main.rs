@@ -5,6 +5,7 @@
 
 mod dante;
 mod network;
+mod route;
 
 use clap::{Parser, Subcommand};
 use std::{net::Ipv4Addr, process::ExitCode, time::Duration};
@@ -37,6 +38,24 @@ struct Cli {
 enum Command {
     /// Show every device, its channels, and what each receiver is routed from.
     Status,
+    /// Route a receiver channel from a transmitter channel, or clear it.
+    ///
+    /// Channels are written `channel@device`; a receiver may also be given by
+    /// number (`2@device`). The source must exist, the write is skipped when
+    /// the route is already in place, and the result is read back.
+    Route {
+        /// The receiver to change, e.g. `Left@stage-box`.
+        receiver: String,
+        /// The transmitter to route from, e.g. `Mic 3@foh-rack`.
+        #[arg(required_unless_present = "clear", conflicts_with = "clear")]
+        source: Option<String>,
+        /// Remove the receiver's subscription instead.
+        #[arg(long)]
+        clear: bool,
+        /// Show what would change without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -73,6 +92,24 @@ fn run(cli: &Cli) -> Result<ExitCode, Box<dyn std::error::Error>> {
                 return Ok(ExitCode::FAILURE);
             }
             Ok(ExitCode::SUCCESS)
+        }
+        Command::Route {
+            ref receiver,
+            ref source,
+            clear: _,
+            dry_run,
+        } => {
+            let outcome = route::run(&options, receiver, source.as_deref(), dry_run)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&outcome)?);
+            } else {
+                println!("{}", outcome.render());
+            }
+            Ok(if outcome.ok {
+                ExitCode::SUCCESS
+            } else {
+                ExitCode::FAILURE
+            })
         }
     }
 }

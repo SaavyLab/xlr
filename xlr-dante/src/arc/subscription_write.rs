@@ -240,7 +240,10 @@ fn validate_common_header(
     Ok(())
 }
 
-fn validate_name(field: &'static str, name: &str) -> Result<(), SubscriptionWriteCodecError> {
+pub(crate) fn validate_name(
+    field: &'static str,
+    name: &str,
+) -> Result<(), SubscriptionWriteCodecError> {
     let bytes = name.as_bytes();
     if bytes.is_empty() {
         return Err(SubscriptionWriteCodecError::InvalidName {
@@ -346,6 +349,10 @@ impl SubscriptionAcceptance {
     }
 
     /// The request sequence that this acceptance confirms.
+    pub(crate) const fn accepted(sequence: u16) -> Self {
+        Self { sequence }
+    }
+
     pub const fn sequence(self) -> u16 {
         self.sequence
     }
@@ -398,6 +405,9 @@ pub enum SubscriptionWriteCodecError {
     MissingTerminator {
         field: &'static str,
     },
+    InvalidPageCapacity {
+        found: u8,
+    },
     NonzeroPadding,
     NonzeroClearTail,
     LengthOverflow,
@@ -409,7 +419,11 @@ pub enum NameErrorReason {
     Empty,
     NonAscii,
     ContainsNul,
-    TooLong { length: usize },
+    TooLong {
+        length: usize,
+    },
+    /// The name is valid ASCII but not accepted by this write form.
+    Unsupported,
 }
 
 /// Structural or semantic failure while parsing a write reply.
@@ -475,6 +489,9 @@ impl fmt::Display for SubscriptionWriteCodecError {
             Self::MissingTerminator { field } => {
                 write!(formatter, "{field} name is not NUL terminated")
             }
+            Self::InvalidPageCapacity { found } => {
+                write!(formatter, "page capacity {found} is outside 1..=32")
+            }
             Self::NonzeroPadding => write!(formatter, "set padding is not zero"),
             Self::NonzeroClearTail => write!(formatter, "clear request tail is not zero"),
             Self::LengthOverflow => write!(formatter, "write payload length exceeds u16"),
@@ -492,6 +509,7 @@ impl fmt::Display for NameErrorReason {
                 formatter,
                 "name is {length} bytes; maximum is {MAX_NAME_BYTES}"
             ),
+            Self::Unsupported => formatter.write_str("name is not supported by this write form"),
         }
     }
 }

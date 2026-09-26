@@ -15,9 +15,17 @@ cargo install xlr
 ## Usage
 
 ```bash
-xlr status          # every device, its channels, and what feeds each receiver
-xlr status --json   # the same, as stable JSON for scripts and agents
+xlr status                                   # every device, channel, and route
+xlr status --json                            # the same, as stable JSON
+xlr route "Left@stage-box" "Mic 3@foh-rack"   # route a receiver from a source
+xlr route "Left@stage-box" --clear            # unsubscribe it
+xlr route "Left@stage-box" "Mic 3@foh-rack" --dry-run
 ```
+
+`xlr route` checks that the source exists, skips the write when the route is
+already in place, picks the device's write form from its advertised ARC
+protocol, and reads the receiver back to confirm. It exits nonzero unless the
+device reports the requested route.
 
 ```text
 stage-box  (DIOUSB, 192.168.1.40:4440)
