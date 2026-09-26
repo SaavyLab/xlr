@@ -5,6 +5,7 @@ use crate::{
     config::Config,
     dante::{self, DanteStatus},
     focusrite::{self, FocusriteStatus},
+    pipewire::{self, PipewireStatus},
 };
 use serde::Serialize;
 use std::collections::BTreeSet;
@@ -13,12 +14,14 @@ use std::collections::BTreeSet;
 pub struct Setup {
     pub dante: DanteStatus,
     pub focusrite: FocusriteStatus,
+    pub pipewire: PipewireStatus,
 }
 
 pub fn read(options: &dante::Options, config: &Config) -> Setup {
     let mut setup = Setup {
         dante: dante::status(options),
         focusrite: focusrite::status(options.timeout),
+        pipewire: pipewire::status(),
     };
     setup.annotate(config);
     setup
@@ -26,19 +29,30 @@ pub fn read(options: &dante::Options, config: &Config) -> Setup {
 
 impl Setup {
     pub fn has_errors(&self) -> bool {
-        self.dante.has_errors() || self.focusrite.has_errors()
+        self.dante.has_errors() || self.focusrite.has_errors() || self.pipewire.has_errors()
     }
 
     pub fn render(&self) -> String {
         format!(
-            "── Dante ──\n{}── Focusrite (USB) ──\n{}",
+            "── Dante ──\n{}── Focusrite (USB) ──\n{}\n── PipeWire ──\n{}",
             self.dante.render(),
-            self.focusrite.render()
+            self.focusrite.render(),
+            self.pipewire.render()
         )
     }
 
     /// Attaches your names to everything they refer to.
     fn annotate(&mut self, config: &Config) {
+        for output in &mut self.pipewire.outputs {
+            output.names = config.names_for(&Address::PipewireSink {
+                node: output.node.clone(),
+            });
+        }
+        for input in &mut self.pipewire.inputs {
+            input.names = config.names_for(&Address::PipewireSource {
+                node: input.node.clone(),
+            });
+        }
         for device in &mut self.dante.devices {
             for tx in &mut device.transmitters {
                 tx.names = config.names_for(&Address::DanteTx {
@@ -111,6 +125,26 @@ impl Setup {
                 });
             }
         }
+        if self.pipewire.unavailable.is_some() || self.pipewire.error.is_some() {
+            unverified.insert("pipewire/sink".to_owned());
+            unverified.insert("pipewire/source".to_owned());
+        }
+        live.extend(
+            self.pipewire
+                .outputs
+                .iter()
+                .map(|output| Address::PipewireSink {
+                    node: output.node.clone(),
+                }),
+        );
+        live.extend(
+            self.pipewire
+                .inputs
+                .iter()
+                .map(|input| Address::PipewireSource {
+                    node: input.node.clone(),
+                }),
+        );
         (live, unverified)
     }
 }

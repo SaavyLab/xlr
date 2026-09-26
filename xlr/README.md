@@ -15,7 +15,7 @@ cargo install xlr
 ## Usage
 
 ```bash
-xlr status                                   # the whole setup: Dante + Focusrite
+xlr status                                   # the whole setup: Dante, Focusrite, PipeWire
 xlr status --json                            # the same, as stable JSON
 xlr route "Left@stage-box" "Mic 3@foh-rack"   # route a receiver from a source
 xlr route "Left@stage-box" --clear            # unsubscribe it
@@ -64,8 +64,9 @@ connected (`found`, `missing`, or `unverified` when its device can't be
 read), exiting nonzero if any are missing.
 
 Addresses: `dante/<device>/rx/<channel or number>`,
-`dante/<device>/tx/<channel>`, `focusrite/<device>/input/<n>`, and
-`focusrite/<device>/monitor`. A Focusrite device is identified by its serial
+`dante/<device>/tx/<channel>`, `focusrite/<device>/input/<n>`,
+`focusrite/<device>/monitor`, `pipewire/sink/<node>`, and
+`pipewire/source/<node>`. A Focusrite device is identified by its serial
 number (shown in `xlr status --json` as `id`).
 
 Built by [SaavyLab](https://github.com/saavylab).

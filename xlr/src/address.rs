@@ -5,6 +5,8 @@
 //! dante/<device>/tx/<channel>      a Dante transmitter channel
 //! focusrite/<device>/input/<n>     a Focusrite input, 1-based
 //! focusrite/<device>/monitor       a Focusrite monitor section
+//! pipewire/sink/<node>             a PipeWire output (sink), by node name
+//! pipewire/source/<node>           a PipeWire input (source), by node name
 //! ```
 //!
 //! The last segment of a Dante address is the rest of the string, so
@@ -18,6 +20,8 @@ pub enum Address {
     DanteTx { device: String, channel: String },
     FocusriteInput { device: String, input: u8 },
     FocusriteMonitor { device: String },
+    PipewireSink { node: String },
+    PipewireSource { node: String },
 }
 
 impl Address {
@@ -28,6 +32,17 @@ impl Address {
         aliases: &dyn Fn(&str, &str) -> Option<String>,
     ) -> Result<Self, String> {
         let invalid = || format!("`{text}` is not a valid address; see `xlr names --help`");
+        if let Some(rest) = text.strip_prefix("pipewire/") {
+            return match rest.split_once('/') {
+                Some(("sink", node)) if !node.is_empty() => Ok(Self::PipewireSink {
+                    node: node.to_owned(),
+                }),
+                Some(("source", node)) if !node.is_empty() => Ok(Self::PipewireSource {
+                    node: node.to_owned(),
+                }),
+                _ => Err(invalid()),
+            };
+        }
         let (backend, rest) = text.split_once('/').ok_or_else(invalid)?;
         let (device, rest) = rest.split_once('/').ok_or_else(invalid)?;
         if device.is_empty() {
@@ -60,7 +75,7 @@ impl Address {
                 _ => Err(invalid()),
             },
             _ => Err(format!(
-                "`{text}`: unknown backend `{backend}` (expected dante or focusrite)"
+                "`{text}`: unknown backend `{backend}` (expected dante, focusrite, or pipewire)"
             )),
         }
     }
@@ -75,6 +90,8 @@ impl fmt::Display for Address {
                 write!(formatter, "focusrite/{device}/input/{input}")
             }
             Self::FocusriteMonitor { device } => write!(formatter, "focusrite/{device}/monitor"),
+            Self::PipewireSink { node } => write!(formatter, "pipewire/sink/{node}"),
+            Self::PipewireSource { node } => write!(formatter, "pipewire/source/{node}"),
         }
     }
 }
@@ -97,6 +114,8 @@ mod tests {
             "dante/dev/rx/Bus A/B",
             "focusrite/P9H9/input/1",
             "focusrite/P9H9/monitor",
+            "pipewire/sink/alsa_output.usb-x.analog-stereo",
+            "pipewire/source/alsa_input.pci",
         ] {
             assert_eq!(parse(text).unwrap().to_string(), text);
         }
@@ -126,6 +145,7 @@ mod tests {
             "focusrite/dev/input/x",
             "focusrite/dev/output/1",
             "pipewire/node/x",
+            "pipewire/sink/",
         ] {
             assert!(parse(text).is_err(), "{text}");
         }

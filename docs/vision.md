@@ -79,7 +79,7 @@ Tailscale and other overlays are welcome but never required.
 |---|---|---|
 | Dante | network (ARC over UDP, mDNS) | discovery, channels, subscriptions read and write (Via and hardware forms) |
 | Focusrite | USB vendor control interface | Scarlett 18i20 3rd Gen switches, read-only |
-| PipeWire | local audio server | planned: graph read, then links and defaults |
+| PipeWire | local audio server | graph read (endpoints, defaults, streams); links and defaults next |
 
 Each backend crate (`xlr-dante`, `xlr-focusrite`, …) is a standalone library
 with no knowledge of the CLI, daemons, or other backends.
@@ -129,9 +129,9 @@ issuing a sequence of imperative commands.
 
 ## Build order
 
-1. Names: per-host configuration mapping names to addresses; `status` and
-   `route` speak names.
-2. PipeWire read backend.
+1. ~~Names: per-host configuration mapping names to addresses; `status` and
+   `route` speak names.~~ Done.
+2. ~~PipeWire read backend.~~ Done.
 3. `xlr serve` with key-pinned trust and pairing; multi-host `status`,
    read-only.
 4. Remote control role; snapshot, apply, and undo; host-enforced guardrails.

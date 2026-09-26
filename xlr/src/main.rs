@@ -8,6 +8,7 @@ mod config;
 mod dante;
 mod focusrite;
 mod network;
+mod pipewire;
 mod route;
 mod setup;
 
@@ -40,8 +41,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Show the whole setup: Dante devices and routes, and Focusrite
-    /// interfaces connected over USB, labelled with your names.
+    /// Show the whole setup: Dante devices and routes, Focusrite
+    /// interfaces on USB, and this host's PipeWire graph, labelled with
+    /// your names.
     Status,
     /// List your names and check each against live hardware.
     ///

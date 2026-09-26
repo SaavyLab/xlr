@@ -29,6 +29,16 @@ required. Currently reads the Scarlett 18i20 3rd Gen's switches.
 xlr-focusrite = "0.1"
 ```
 
+### [xlr-pipewire](./xlr-pipewire/)
+
+Read the PipeWire audio graph on Linux: sinks, sources, defaults, and which
+applications are playing to or recording from each.
+
+```toml
+[dependencies]
+xlr-pipewire = "0.1"
+```
+
 ### [xlr-dante](./xlr-dante/)
 
 Programmatic control for Dante audio networks: discover devices, list their

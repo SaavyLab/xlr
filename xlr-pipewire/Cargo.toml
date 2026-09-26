@@ -1,0 +1,15 @@
+[package]
+name = "xlr-pipewire"
+version = "0.1.0"
+description = "Read the PipeWire audio graph: devices, sinks, sources, streams, links, and defaults."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
+keywords = ["pipewire", "audio", "linux", "routing"]
+categories = ["multimedia::audio", "os::linux-apis"]
+
+[dependencies]
+serde_json = "1.0.145"
