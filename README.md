@@ -39,6 +39,12 @@ channels, and read and change receiver subscriptions.
 xlr-dante = "0.1"
 ```
 
+## Direction
+
+See [docs/vision.md](docs/vision.md) for where xlr is headed: per-host daemons
+with key-pinned trust, your own names for everything, scenes with undo, and
+end-to-end signal tracing.
+
 ## Development
 
 The toolchain is pinned through Nix. With direnv, `cd` into the repository and
